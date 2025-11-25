@@ -20,8 +20,13 @@ def initialize_firebase_app():
         try:
             print("Inicializando Firebase Admin SDK...")
             # ID do projeto e do segredo onde a chave de serviço está armazenada
-            project_id = os.getenv("GCP_PROJECT_ID", "teste-notificacao-barbearia")
-            secret_id = "firebase-admin-credentials"
+            # Lê do environment, que é configurado no Cloud Run via deploy script
+            project_id = os.getenv("FIREBASE_PROJECT_ID")
+            secret_id = os.getenv("SECRET_NAME")
+
+            if not project_id or not secret_id:
+                raise ValueError("Variáveis de ambiente FIREBASE_PROJECT_ID e SECRET_NAME devem estar configuradas")
+
             version_id = "latest"
 
             # Cria o cliente do Secret Manager

@@ -30,17 +30,25 @@ cd "$CLIENTE_DIR/backend"
 
 # Lê configurações do config.yaml
 GCP_PROJECT=$(grep 'gcp_project_id:' config.yaml | awk '{print $2}' | tr -d '"')
+FIREBASE_PROJECT=$(grep 'firebase_project_id:' config.yaml | awk '{print $2}' | tr -d '"')
 SERVICE_NAME=$(grep 'service_name:' config.yaml | awk '{print $2}' | tr -d '"')
 REGION=$(grep 'region:' config.yaml | awk '{print $2}' | tr -d '"')
+SECRET_NAME=$(grep 'secret_name:' config.yaml | awk '{print $2}' | tr -d '"')
 
 echo "  Project: $GCP_PROJECT"
 echo "  Service: $SERVICE_NAME"
 echo "  Region: $REGION"
+echo "  Firebase Project: $FIREBASE_PROJECT"
+echo "  Secret: $SECRET_NAME"
+
+# Constrói o nome do recurso KMS
+KMS_KEY_NAME="projects/$GCP_PROJECT/locations/$REGION/keyRings/$CLIENTE-keyring/cryptoKeys/$CLIENTE-crypto-key"
 
 /opt/homebrew/bin/gcloud run deploy "$SERVICE_NAME" \
     --source . \
     --region="$REGION" \
     --project="$GCP_PROJECT" \
-    --allow-unauthenticated
+    --allow-unauthenticated \
+    --set-env-vars="KMS_CRYPTO_KEY_NAME=$KMS_KEY_NAME,FIREBASE_PROJECT_ID=$FIREBASE_PROJECT,SECRET_NAME=$SECRET_NAME"
 
 echo "✅ Backend de $CLIENTE deployado com sucesso!"

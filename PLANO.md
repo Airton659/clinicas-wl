@@ -106,6 +106,78 @@ Cada cliente é completamente isolado:
 
 Depois de validar a arquitetura, podemos adicionar o pilot como tenant.
 
+## Configuração Necessária para Novos Clientes
+
+Para adicionar um novo cliente, além de criar a estrutura de pastas e configs, é necessário configurar os seguintes recursos no GCP/Firebase:
+
+### 1. APIs que precisam estar habilitadas:
+```bash
+gcloud services enable cloudkms.googleapis.com --project=<projeto>
+gcloud services enable secretmanager.googleapis.com --project=<projeto>
+```
+
+### 2. KMS (Cloud Key Management Service):
+```bash
+# Criar keyring
+gcloud kms keyrings create <cliente>-keyring \
+  --location=<region> \
+  --project=<projeto>
+
+# Criar crypto key
+gcloud kms keys create <cliente>-crypto-key \
+  --keyring=<cliente>-keyring \
+  --location=<region> \
+  --purpose=encryption \
+  --project=<projeto>
+```
+
+### 3. Firebase Admin Service Account:
+```bash
+# Criar service account
+gcloud iam service-accounts create firebase-admin \
+  --display-name="Firebase Admin SDK" \
+  --project=<projeto>
+
+# Dar permissões
+gcloud projects add-iam-policy-binding <projeto> \
+  --member="serviceAccount:firebase-admin@<projeto>.iam.gserviceaccount.com" \
+  --role="roles/firebase.admin"
+
+gcloud projects add-iam-policy-binding <projeto> \
+  --member="serviceAccount:firebase-admin@<projeto>.iam.gserviceaccount.com" \
+  --role="roles/datastore.user"
+
+# Criar chave JSON
+gcloud iam service-accounts keys create /tmp/firebase-admin.json \
+  --iam-account=firebase-admin@<projeto>.iam.gserviceaccount.com \
+  --project=<projeto>
+```
+
+### 4. Secret Manager:
+```bash
+# Criar secret com as credenciais
+gcloud secrets create <nome-do-secret> \
+  --data-file=/tmp/firebase-admin.json \
+  --project=<projeto>
+
+# Dar acesso ao Cloud Run
+gcloud secrets add-iam-policy-binding <nome-do-secret> \
+  --member="serviceAccount:<project-number>-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor" \
+  --project=<projeto>
+
+# Limpar arquivo temporário
+rm /tmp/firebase-admin.json
+```
+
+### 5. Permissões do Cloud Build:
+```bash
+# Para deployment funcionar
+gcloud projects add-iam-policy-binding <projeto> \
+  --member="serviceAccount:<project-number>-compute@developer.gserviceaccount.com" \
+  --role="roles/storage.admin"
+```
+
 ## Garantias
 
 ✅ Código base = o que JÁ funciona em produção
@@ -113,3 +185,12 @@ Depois de validar a arquitetura, podemos adicionar o pilot como tenant.
 ✅ Atualização única (core) aplicada a todos
 ✅ Produção intocada
 ✅ Testável antes de afetar qualquer cliente real
+
+## Status Atual
+
+### clinica-medica (concierge-health-pilot)
+✅ Backend deployado: https://clinica-medica-backend-388995704994.southamerica-east1.run.app
+✅ Frontend deployado: https://concierge-health-pilot.web.app
+✅ KMS configurado
+✅ Secret Manager configurado
+✅ Todas as APIs habilitadas
