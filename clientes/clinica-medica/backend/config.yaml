@@ -1,0 +1,7 @@
+client_name: "Clínica Médica"
+firebase_project_id: "clinica-medica-firebase"  # Alterar para projeto real
+gcp_project_id: "clinica-medica-firebase"       # Alterar para projeto real
+region: "southamerica-east1"
+service_name: "clinica-medica-backend"
+secret_name: "firebase-admin-credentials"
+allow_unauthenticated: true
