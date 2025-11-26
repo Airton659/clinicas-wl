@@ -31,7 +31,7 @@ class _PatientListPageState extends State<PatientListPage> {
 
   void _loadPatients() {
     final apiService = Provider.of<ApiService>(context, listen: false);
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
 
     setState(() {
       _usersFuture = apiService.getAllUsersInBusiness().then((users) {
@@ -68,7 +68,7 @@ class _PatientListPageState extends State<PatientListPage> {
       _usersFuture = apiService.getAllUsersInBusiness(forceRefresh: true).then((users) {
         // Filtra para pegar apenas os usuários com o papel de 'cliente' (pacientes)
         // Excluir super_admins
-        const negocioId = "AvcbtyokbHx82pYbiraE";
+        const negocioId = "rlAB6phw0EBsBFeDyOt6";
         final patients = users.where((user) =>
           !user.isSuperAdmin && user.roles?[negocioId] == 'cliente'
         ).toList();
@@ -80,7 +80,7 @@ class _PatientListPageState extends State<PatientListPage> {
   }
 
   Widget _buildPatientCard(Usuario patient) {
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final isInactive = patient.status_por_negocio?[negocioId] == 'inativo';
     final displayName = DisplayUtils.getUserDisplayName(patient);
     
@@ -428,7 +428,7 @@ class _PatientListPageState extends State<PatientListPage> {
   }
 
   Future<void> _showLinkNurseDialog(Usuario patient) async {
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final apiService = Provider.of<ApiService>(context, listen: false);
     
     // Buscar todos os enfermeiros disponíveis
@@ -504,7 +504,7 @@ class _PatientListPageState extends State<PatientListPage> {
   }
 
   Future<void> _showLinkTechniciansDialog(Usuario patient) async {
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final apiService = Provider.of<ApiService>(context, listen: false);
     
     // Buscar todos os técnicos disponíveis
@@ -651,7 +651,7 @@ class _PatientListPageState extends State<PatientListPage> {
   }
 
   Future<void> _showLinkDoctorDialog(Usuario patient) async {
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final apiService = Provider.of<ApiService>(context, listen: false);
     
     // Buscar todos os médicos disponíveis
@@ -926,7 +926,7 @@ class _PatientDetailsModalState extends State<_PatientDetailsModal> {
     try {
       final apiService = Provider.of<ApiService>(context, listen: false);
       final allUsers = await apiService.getAllUsersInBusiness();
-      const negocioId = "AvcbtyokbHx82pYbiraE";
+      const negocioId = "rlAB6phw0EBsBFeDyOt6";
       
       
       // Buscar profissional - usar a mesma lógica do team management

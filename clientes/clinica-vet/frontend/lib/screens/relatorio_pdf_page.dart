@@ -36,7 +36,7 @@ class _RelatorioPdfPageState extends State<RelatorioPdfPage> {
 
   void _loadUserRole() {
     final authService = Provider.of<AuthService>(context, listen: false);
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final rolesMap = authService.currentUser?.roles;
 
     if (rolesMap != null) {

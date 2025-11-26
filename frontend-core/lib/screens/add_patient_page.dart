@@ -123,7 +123,7 @@ class _AddPatientPageState extends State<AddPatientPage>
 
       final Usuario newPatient = await apiService.createPatient(patientData);
 
-      const negocioId = "AvcbtyokbHx82pYbiraE";
+      const negocioId = "rlAB6phw0EBsBFeDyOt6";
       final currentUser = authService.currentUser;
       final userRole = currentUser?.roles?[negocioId];
 

@@ -179,7 +179,7 @@ class _PatientDetailsPageState extends State<PatientDetailsPage>
   Future<void> _initializePage({bool forceRefresh = false}) async {
     final authService = Provider.of<AuthService>(context, listen: false);
     final apiService = Provider.of<ApiService>(context, listen: false);
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
 
     // Super admin deve ser tratado como admin
     if (authService.currentUser?.isSuperAdmin ?? false) {
@@ -372,6 +372,7 @@ class _PatientDetailsPageState extends State<PatientDetailsPage>
       _fichaCompletaFuture = apiService.getFichaCompleta(
         widget.pacienteId,
         consultaId: consultaId,
+        forceRefresh: consultaId != null, // Força refresh quando vem de publicação
       );
     });
   }
@@ -1350,7 +1351,7 @@ Widget _buildModernAppBar(bool innerBoxIsScrolled) {
 
         final registros = snapshot.data!;
         final authService = Provider.of<AuthService>(context, listen: false);
-        const negocioId = "AvcbtyokbHx82pYbiraE";
+        const negocioId = "rlAB6phw0EBsBFeDyOt6";
         final canEdit = authService.currentUser?.roles?[negocioId] == 'tecnico';
 
         return RefreshIndicator(

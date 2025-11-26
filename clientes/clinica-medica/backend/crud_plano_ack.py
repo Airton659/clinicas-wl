@@ -23,7 +23,7 @@ def _today_local_str() -> str:
     return date.today().isoformat()
 
 
-def _doc_id(paciente_id: int, tecnico_id: int, plano_version_id: str, ack_date: str) -> str:
+def _doc_id(paciente_id: str, tecnico_id: str, plano_version_id: str, ack_date: str) -> str:
     # ID determinístico para idempotência:
     # <paciente>_<tecnico>_<versao>_<YYYY-MM-DD>
     # Evita duplicidade por dia/versão.
@@ -32,8 +32,8 @@ def _doc_id(paciente_id: int, tecnico_id: int, plano_version_id: str, ack_date: 
 
 def get_plano_ack(
     db: FirestoreClient,
-    paciente_id: int,
-    tecnico_id: int,
+    paciente_id: str,
+    tecnico_id: str,
     plano_version_id: str,
     dia: Optional[date] = None,
 ) -> Optional[Dict[str, Any]]:
@@ -51,8 +51,8 @@ def get_plano_ack(
 
 def create_plano_ack(
     db: FirestoreClient,
-    paciente_id: int,
-    tecnico_id: int,
+    paciente_id: str,
+    tecnico_id: str,
     plano_version_id: str,
     dia: Optional[date] = None,
 ) -> Dict[str, Any]:

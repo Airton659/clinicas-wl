@@ -4,4 +4,10 @@ gcp_project_id: "concierge-health-pilot"
 region: "southamerica-east1"
 service_name: "clinica-medica-backend"
 secret_name: "firebase-admin-credentials-pilot"
+cloud_storage_bucket: "concierge-health-pilot.firebasestorage.app"
 allow_unauthenticated: true
+
+# VAPID keys for Web Push Notifications (unique per client)
+vapid_private_key: "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgIGwNn2Lxg5tg48j7dXkS5Z6xBlRYMx/Cb7Mh8Oz2NeKhRANCAATD0LOFK2tNrDz3FmdlBoPoJW+/VDpE0ItHbWsacRYm+0w2n2/PtYeC+oIwUW9+NWUtEikVbHDJdgeM/RbwWGt0"
+vapid_public_key: "BMPQs4Ura02sPPcWZ2UGg-glb79UOkTQi0dtaxpxFib7TDafb8-1h4L6gjBRb341ZS0SKRVscMl2B4z9FvBYa3Q"
+vapid_claims_email: "mailto:suporte@clinicamedica.com.br"

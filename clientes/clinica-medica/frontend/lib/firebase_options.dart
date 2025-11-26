@@ -42,13 +42,13 @@ class DefaultFirebaseOptions {
     iosBundleId: 'com.example.analicegrubert',
   );
 
-  // Configuração para Web
+  // Configuração para Web (Clínica Médica - concierge-health-pilot)
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyC073ifaNVWcVwFi4e3agdl-yX7aaKsMwk',
-    appId: '1:862082955632:web:ae8823c881d702d79cb7b5',
-    messagingSenderId: '862082955632',
-    projectId: 'teste-notificacao-barbearia',
-    storageBucket: 'teste-notificacao-barbearia.firebasestorage.app',
-    authDomain: 'teste-notificacao-barbearia.firebaseapp.com',
+    apiKey: 'AIzaSyAKd5Ll_6yQRnHnfQXzPgCCNVsOw9sZxf0',
+    appId: '1:388995704994:web:bacef48895925871490ffb',
+    messagingSenderId: '388995704994',
+    projectId: 'concierge-health-pilot',
+    storageBucket: 'concierge-health-pilot.firebasestorage.app',
+    authDomain: 'concierge-health-pilot.firebaseapp.com',
   );
 }

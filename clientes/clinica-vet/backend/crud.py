@@ -3060,11 +3060,14 @@ def listar_medicacoes(db: firestore.client, paciente_id: str, consulta_id: str) 
     """Lista todas as medicações de um paciente, filtrando-as pelo ID da consulta."""
     medicacoes = []
     try:
-        query = db.collection('usuarios').document(paciente_id).collection('medicacoes').where('consulta_id', '==', consulta_id).order_by('data_criacao', direction=firestore.Query.DESCENDING)
+        # Query sem order_by para evitar problema de índice
+        query = db.collection('usuarios').document(paciente_id).collection('medicacoes').where('consulta_id', '==', consulta_id)
         for doc in query.stream():
             medicacao_data = doc.to_dict()
             medicacao_data['id'] = doc.id
             medicacoes.append(medicacao_data)
+        # Ordena em Python
+        medicacoes.sort(key=lambda x: x.get('data_criacao', ''), reverse=True)
     except Exception as e:
         logger.error(f"Erro ao listar medicações do paciente {paciente_id}: {e}")
     return medicacoes
@@ -3073,11 +3076,14 @@ def listar_checklist(db: firestore.client, paciente_id: str, consulta_id: str) -
     """Lista todos os itens do checklist de um paciente, filtrando-os pelo ID da consulta."""
     checklist_itens = []
     try:
-        query = db.collection('usuarios').document(paciente_id).collection('checklist').where('consulta_id', '==', consulta_id).order_by('data_criacao', direction=firestore.Query.DESCENDING)
+        # Query sem order_by para evitar problema de índice
+        query = db.collection('usuarios').document(paciente_id).collection('checklist').where('consulta_id', '==', consulta_id)
         for doc in query.stream():
             item_data = doc.to_dict()
             item_data['id'] = doc.id
             checklist_itens.append(item_data)
+        # Ordena em Python
+        checklist_itens.sort(key=lambda x: x.get('data_criacao', ''), reverse=True)
     except Exception as e:
         logger.error(f"Erro ao listar checklist do paciente {paciente_id}: {e}")
     return checklist_itens
@@ -3086,11 +3092,14 @@ def listar_orientacoes(db: firestore.client, paciente_id: str, consulta_id: str)
     """Lista todas as orientações de um paciente, filtrando-as pelo ID da consulta."""
     orientacoes = []
     try:
-        query = db.collection('usuarios').document(paciente_id).collection('orientacoes').where('consulta_id', '==', consulta_id).order_by('data_criacao', direction=firestore.Query.DESCENDING)
+        # Query sem order_by para evitar problema de índice
+        query = db.collection('usuarios').document(paciente_id).collection('orientacoes').where('consulta_id', '==', consulta_id)
         for doc in query.stream():
             orientacao_data = doc.to_dict()
             orientacao_data['id'] = doc.id
             orientacoes.append(orientacao_data)
+        # Ordena em Python
+        orientacoes.sort(key=lambda x: x.get('data_criacao', ''), reverse=True)
     except Exception as e:
         logger.error(f"Erro ao listar orientações do paciente {paciente_id}: {e}")
     return orientacoes
@@ -3117,7 +3126,7 @@ def get_ficha_completa_paciente(db: firestore.client, paciente_id: str, consulta
     """
     # 1. Encontra a última consulta do paciente.
     consultas = listar_consultas(db, paciente_id)
-    
+
     # Se um consulta_id específico for informado, usa ele.
     if consulta_id:
         ultima_consulta_id = consulta_id
@@ -3139,7 +3148,7 @@ def get_ficha_completa_paciente(db: firestore.client, paciente_id: str, consulta
         "checklist": listar_checklist(db, paciente_id, consulta_id=ultima_consulta_id),
         "orientacoes": listar_orientacoes(db, paciente_id, consulta_id=ultima_consulta_id),
     }
-    
+
     # Garante que o checklist não tenha itens duplicados.
     ficha['checklist'] = _dedup_checklist_items(ficha.get('checklist', []))
     return ficha
@@ -3627,23 +3636,6 @@ def listar_resultados_pesquisas(db: firestore.client, negocio_id: str, modelo_pe
 # FUNÇÕES DE PLANO DE CUIDADO E AUDITORIA
 # =================================================================================
 
-def registrar_confirmacao_leitura_plano(db: firestore.client, paciente_id: str, confirmacao: schemas.ConfirmacaoLeituraCreate) -> Dict:
-    """Registra a confirmação de leitura do plano de cuidado de um paciente por um técnico."""
-    confirmacao_dict = confirmacao.model_dump()
-    confirmacao_dict.update({
-        "paciente_id": paciente_id,
-        "data_confirmacao": datetime.utcnow()
-    })
-    
-    # Salva a confirmação em uma subcoleção do paciente, para facilitar a consulta
-    paciente_ref = db.collection('usuarios').document(paciente_id)
-    doc_ref = paciente_ref.collection('confirmacoes_leitura').document()
-    doc_ref.set(confirmacao_dict)
-
-    confirmacao_dict['id'] = doc_ref.id
-    return confirmacao_dict
-
-
 # =================================================================================
 # FUNÇÕES DO DIÁRIO DE ACOMPANHAMENTO ESTRUTURADO
 # =================================================================================
@@ -3776,25 +3768,26 @@ def verificar_leitura_plano_do_dia(db: firestore.client, paciente_id: str, tecni
     """
     data_inicio_dia = datetime.combine(data, datetime.min.time())
     data_fim_dia = datetime.combine(data, datetime.max.time())
-    
+
+    # Query SEM order_by para evitar problema de índice composto
     query = db.collection('usuarios').document(paciente_id).collection('confirmacoes_leitura')\
         .where('usuario_id', '==', tecnico_id)\
         .where('data_confirmacao', '>=', data_inicio_dia)\
-        .where('data_confirmacao', '<=', data_fim_dia)\
-        .order_by('data_confirmacao', direction=firestore.Query.DESCENDING)\
-        .limit(1)
-        
+        .where('data_confirmacao', '<=', data_fim_dia)
+
     docs = list(query.stream())
-    
+
     if not docs:
         return {
             "leitura_confirmada": False,
             "ultima_leitura": None
         }
-    
+
+    # Ordena em Python e pega o mais recente
+    docs.sort(key=lambda doc: doc.to_dict().get('data_confirmacao', datetime.min), reverse=True)
     ultima_leitura_doc = docs[0].to_dict()
     data_confirmacao = ultima_leitura_doc.get("data_confirmacao")
-    
+
     return {
         "leitura_confirmada": True,
         "ultima_leitura": data_confirmacao.isoformat() if data_confirmacao else None
@@ -7377,7 +7370,30 @@ def get_usuario_por_id(db: firestore.client, usuario_id: str) -> Optional[Dict]:
                 usuario_data['nome'] = decrypt_data(usuario_data['nome'])
             except Exception:
                 usuario_data['nome'] = "[Erro na descriptografia]"
-        
+
+        # Descriptografar telefone
+        if 'telefone' in usuario_data and usuario_data['telefone']:
+            try:
+                usuario_data['telefone'] = decrypt_data(usuario_data['telefone'])
+            except Exception:
+                usuario_data['telefone'] = None
+
+        # Descriptografar endereço
+        if 'endereco' in usuario_data and usuario_data['endereco']:
+            try:
+                endereco_descriptografado = {}
+                for k, v in usuario_data['endereco'].items():
+                    if v and isinstance(v, str) and v.strip():
+                        try:
+                            endereco_descriptografado[k] = decrypt_data(v)
+                        except Exception:
+                            endereco_descriptografado[k] = None
+                    else:
+                        endereco_descriptografado[k] = v
+                usuario_data['endereco'] = endereco_descriptografado
+            except Exception:
+                usuario_data['endereco'] = None
+
         # Lógica robusta para obter a URL da imagem de perfil
         profile_image_url = usuario_data.get('profile_image_url') or usuario_data.get('profile_image')
         
@@ -7416,8 +7432,9 @@ def _get_cloud_tasks_client():
 
 def _get_cloud_tasks_queue_path():
     """Retorna o caminho completo da fila do Cloud Tasks."""
-    project_id = os.getenv('GCP_PROJECT_ID') or os.getenv('GOOGLE_CLOUD_PROJECT') or 'teste-notificacao-barbearia'
-    location = os.getenv('CLOUD_TASKS_LOCATION') or 'southamerica-east1'  # HARDCODED PORRA!
+    # Usa FIREBASE_PROJECT_ID como fallback, que é configurado no deploy
+    project_id = os.getenv('GCP_PROJECT_ID') or os.getenv('GOOGLE_CLOUD_PROJECT') or os.getenv('FIREBASE_PROJECT_ID')
+    location = os.getenv('CLOUD_TASKS_LOCATION') or 'southamerica-east1'
     queue_name = os.getenv('CLOUD_TASKS_QUEUE') or 'notificacoes-atrasadas'
 
     logger.info(f"🔍 DEBUG Cloud Tasks - project_id: {project_id}, location: {location}, queue_name: {queue_name}")

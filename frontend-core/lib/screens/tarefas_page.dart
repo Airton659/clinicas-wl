@@ -38,7 +38,7 @@ class _TarefasPageState extends State<TarefasPage> {
   void initState() {
     super.initState();
     final authService = Provider.of<AuthService>(context, listen: false);
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     _userRole = authService.currentUser?.roles?[negocioId];
     _loadTarefas();
     _setupNotificationListener();

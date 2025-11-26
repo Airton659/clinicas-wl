@@ -18,6 +18,7 @@ import 'package:analicegrubert/models/relatorio_detalhado.dart';
 import 'package:analicegrubert/models/notificacao.dart';
 import 'package:analicegrubert/services/auth_service.dart';
 import 'package:analicegrubert/models/tarefa_agendada.dart';
+import 'package:analicegrubert/config/app_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -39,26 +40,26 @@ class CacheEntry<T> {
 }
 
 class ApiService {
-  final String _baseUrl =
-      'https://barbearia-backend-service-862082955632.southamerica-east1.run.app';
+  // URL do backend vem do AppConfig (configurado por cliente)
+  final String _baseUrl = AppConfig.apiBaseUrl;
   final AuthService _authService;
 
   // Função estática para construir URLs de imagem
   static String buildImageUrl(String? imagePath) {
     if (imagePath == null || imagePath.isEmpty) return '';
-    
+
     // Se já é uma URL completa, retorna como está
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
       return imagePath;
     }
-    
-    // Se é um caminho relativo, adiciona a URL base
+
+    // Se é um caminho relativo, adiciona a URL base do AppConfig
     if (imagePath.startsWith('/')) {
-      return 'https://barbearia-backend-service-862082955632.southamerica-east1.run.app$imagePath';
+      return '${AppConfig.apiBaseUrl}$imagePath';
     }
-    
+
     // Se não tem '/' no início, adiciona
-    return 'https://barbearia-backend-service-862082955632.southamerica-east1.run.app/$imagePath';
+    return '${AppConfig.apiBaseUrl}/$imagePath';
   }
   
   // Cache interno com TTL de 5 minutos por padrão
@@ -590,17 +591,19 @@ class ApiService {
         final dynamic jsonData = json.decode(response.body);
 
         // DEBUG: Log do JSON recebido do backend
-        debugPrint('🔍 PRONTUÁRIO API DEBUG - JSON do backend:');
+        debugPrint('🔍 FICHA COMPLETA DEBUG - consultaId: $consultaId');
+        debugPrint('📝 Medicações no JSON: ${jsonData['medicacoes']?.length ?? 0}');
+        debugPrint('📝 Checklist no JSON: ${jsonData['checklist']?.length ?? 0}');
+        debugPrint('📝 Orientações no JSON: ${jsonData['orientacoes']?.length ?? 0}');
         debugPrint('📝 Prontuários no JSON: ${jsonData['prontuarios']?.length ?? 0}');
-        if (jsonData['prontuarios'] != null) {
-          for (int i = 0; i < (jsonData['prontuarios'] as List).length; i++) {
-            final p = jsonData['prontuarios'][i];
-            debugPrint('📝 Prontuário $i API: ${p['titulo']} - ${p['conteudo']?.toString().substring(0, (p['conteudo']?.toString().length ?? 0) < 50 ? (p['conteudo']?.toString().length ?? 0) : 50)}...');
-          }
-        }
 
         final fichaCompleta = FichaCompleta.fromJson(jsonData);
-        
+
+        debugPrint('🔍 FICHA COMPLETA após fromJson:');
+        debugPrint('📝 Medicações: ${fichaCompleta.medicacoes.length}');
+        debugPrint('📝 Checklist: ${fichaCompleta.checklist.length}');
+        debugPrint('📝 Orientações: ${fichaCompleta.orientacoes.length}');
+
         _setCache(cacheKey, fichaCompleta, ttl: const Duration(minutes: 3));
         return fichaCompleta;
       } else {

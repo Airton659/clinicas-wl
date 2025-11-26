@@ -137,7 +137,7 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
                 return const ServerErrorBanner(child: MainLayout());
               }
 
-              const negocioId = "AvcbtyokbHx82pYbiraE";
+              const negocioId = "rlAB6phw0EBsBFeDyOt6";
               final userRole = user.roles?[negocioId];
 
               if (userRole == null || userRole == 'paciente' || userRole == 'cliente') {

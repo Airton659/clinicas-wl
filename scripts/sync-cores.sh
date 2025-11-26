@@ -36,10 +36,13 @@ for cliente_dir in "$ROOT_DIR"/clientes/*/; do
             --exclude='config.yaml' \
             --exclude='.firebaserc' \
             --exclude='firebase.json' \
+            --exclude='firebase_options.dart' \
+            --exclude='lib/config/app_config.dart' \
             --exclude='build' \
             --exclude='.dart_tool' \
             --exclude='.flutter-plugins' \
             --exclude='.flutter-plugins-dependencies' \
+            --exclude='.firebase' \
             "$ROOT_DIR/frontend-core/" "$cliente_dir/frontend/"
     fi
 

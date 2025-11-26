@@ -284,7 +284,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   bool _isClient() {
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
-      const negocioId = "AvcbtyokbHx82pYbiraE";
+      const negocioId = "rlAB6phw0EBsBFeDyOt6";
       final userRole = authService.currentUser?.roles?[negocioId];
       final isClient = userRole == 'cliente' || userRole == 'paciente' || userRole == null;
       debugPrint('🔍 NotificationsPage - É cliente? $isClient (role: $userRole)');

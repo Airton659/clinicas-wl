@@ -65,7 +65,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
   void _filterUsers() {
     // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final query = _searchController.text.toLowerCase();
 
     print('🔍 TeamManagementPage: _filterUsers chamado');
@@ -146,7 +146,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
       print('📊 TeamManagementPage: Filtro final - ${_filteredUsers.length} usuários exibidos');
       for (final user in _filteredUsers) {
-        print('   - ${user.nome} (${user.roles?["AvcbtyokbHx82pYbiraE"]})');
+        print('   - ${user.nome} (${user.roles?["rlAB6phw0EBsBFeDyOt6"]})');
       }
     });
   }
@@ -201,7 +201,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
   Future<void> _showChangeRoleDialog(Usuario user) async {
     // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     String? selectedRole = user.roles?[negocioId] ?? 'cliente';
     final rolesDisponiveis = ['profissional', 'tecnico', 'medico', 'cliente'];
 
@@ -299,7 +299,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
   Future<void> _showLinkSupervisorDialog(Usuario technician) async {
     // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final supervisors = _allUsers.where((user) => user.roles?[negocioId] == 'profissional').toList();
     String? selectedSupervisorId = technician.supervisor_id;
 
@@ -373,7 +373,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
   
   Future<void> _showLinkTechniciansDialog(Usuario patient) async {
     // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final technicians = _allUsers.where((user) => user.roles?[negocioId] == 'tecnico').toList();
     final List<String> selectedTechnicianIds = List<String>.from(patient.tecnicosIds ?? []); 
 
@@ -457,7 +457,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
   Future<void> _showLinkNurseDialog(Usuario patient) async {
     // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final nurses = _allUsers.where((user) => user.roles?[negocioId] == 'profissional' && user.profissional_id != null).toList();
     
     String? selectedNurseId = patient.enfermeiroId;
@@ -532,7 +532,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
   Future<void> _showLinkDoctorDialog(Usuario patient) async {
     // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final doctors = _allUsers.where((user) => user.roles?[negocioId] == 'medico').toList();
     
     String? selectedDoctorId = patient.medicoId;
@@ -708,7 +708,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
   @override
   Widget build(BuildContext context) {
     // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
 
     return Scaffold(
       appBar: AppBar(

@@ -140,7 +140,7 @@ class _HomePageState extends State<HomePage>
 
   void _initializeData() {
     final authService = Provider.of<AuthService>(context, listen: false);
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final currentUser = authService.currentUser;
     final rolesMap = currentUser?.roles;
     userName = currentUser?.nome ?? 'Usuário';
@@ -431,7 +431,7 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildAdminContent(List<Usuario> allUsers) {
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
 
     final totalPacientes =
         allUsers.where((u) => !u.isSuperAdmin && u.roles?[negocioId] == 'cliente').length;
@@ -1065,7 +1065,7 @@ class _HomePageState extends State<HomePage>
   // Em lib/screens/home_page.dart
 
   Widget _buildEnhancedPatientCard(dynamic patient) {
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     bool isInactive = false;
     if (patient.runtimeType.toString().contains('Usuario') &&
         patient.status_por_negocio != null) {

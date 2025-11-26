@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:analicegrubert/models/notification_types.dart';
 import 'package:analicegrubert/api/api_service.dart';
+import 'package:analicegrubert/config/app_config.dart';
 import 'package:analicegrubert/services/auth_service.dart';
 import 'package:analicegrubert/screens/patient_details_page.dart';
 import 'package:analicegrubert/screens/client_dashboard.dart';
@@ -444,7 +445,7 @@ class NotificationService with ChangeNotifier {
   }
 
   String? _getUserRole() {
-    const negocioId = "AvcbtyokbHx82pYbiraE";
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
     final role = _authService?.currentUser?.roles?[negocioId];
     return role;
   }
@@ -455,7 +456,7 @@ class NotificationService with ChangeNotifier {
     if (userRole == null && context != null) {
       try {
         final authService = Provider.of<AuthService>(context, listen: false);
-        const negocioId = "AvcbtyokbHx82pYbiraE";
+        const negocioId = "rlAB6phw0EBsBFeDyOt6";
         userRole = authService.currentUser?.roles?[negocioId];
       } catch (e) {
         debugPrint('❌ Erro ao acessar AuthService via Provider: $e');
@@ -710,7 +711,7 @@ class NotificationService with ChangeNotifier {
 
       // Usa HTTP direto já que ApiService não tem método get genérico
       final response = await http.get(
-        Uri.parse('https://barbearia-backend-service-862082955632.southamerica-east1.run.app/vapid-public-key'),
+        Uri.parse('${AppConfig.apiBaseUrl}/vapid-public-key'),
       );
 
       if (response.statusCode == 200) {

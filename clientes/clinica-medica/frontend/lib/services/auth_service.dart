@@ -1,6 +1,7 @@
 // lib/services/auth_service.dart
 
 import 'package:analicegrubert/api/api_service.dart';
+import 'package:analicegrubert/config/app_config.dart';
 import 'package:analicegrubert/models/usuario.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -171,8 +172,8 @@ class AuthService with ChangeNotifier {
   }
 
   Future<String?> getNegocioId() async {
-    const negocioId = "AvcbtyokbHx82pYbiraE";
-    return negocioId;
+    // Usa o negocioId da configuração do cliente
+    return AppConfig.negocioId;
   }
 
   void updateCurrentUserData(Usuario updatedUser) {
