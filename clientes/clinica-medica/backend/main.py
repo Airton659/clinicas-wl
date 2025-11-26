@@ -3432,3 +3432,433 @@ def testar_notificacao_tarefa_atrasada(
     except Exception as e:
         logger.error(f"Erro ao testar notificação: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =================================================================================
+# ENDPOINTS RBAC - SISTEMA DE PERMISSÕES GRANULARES
+# =================================================================================
+
+from permissions_catalog import get_all_permissions, get_permissions_by_category, validate_permissions
+from auth import require_permission, invalidate_permissions_cache, get_user_permissions
+from datetime import datetime as dt
+
+
+@app.get("/permissions", tags=["RBAC - Permissões"])
+async def listar_permissoes(
+    categoria: Optional[str] = None,
+    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase)
+):
+    """
+    Lista todas as permissões disponíveis no sistema
+
+    Args:
+        categoria: (Opcional) Filtrar por categoria específica
+
+    Returns:
+        Lista de permissões ou permissões filtradas por categoria
+    """
+    if categoria:
+        perms_by_cat = get_permissions_by_category()
+        return perms_by_cat.get(categoria, [])
+
+    return get_all_permissions()
+
+
+@app.get("/permissions/by-category", tags=["RBAC - Permissões"])
+async def listar_permissoes_por_categoria(
+    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase)
+):
+    """
+    Lista permissões agrupadas por categoria
+
+    Returns:
+        dict: {
+            "Pacientes": [lista de permissões],
+            "Plano de Cuidados": [lista de permissões],
+            ...
+        }
+    """
+    return get_permissions_by_category()
+
+
+@app.get("/negocios/{negocio_id}/roles", tags=["RBAC - Roles"])
+async def listar_roles(
+    negocio_id: str = Path(..., description="ID do negócio"),
+    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    db = Depends(get_db)
+):
+    """
+    Lista todos os roles (perfis) de um negócio
+
+    IMPORTANTE: Inclui tanto roles genéricos customizados quanto roles do sistema
+    """
+    try:
+        # Verificar acesso ao negócio
+        auth.validate_path_negocio_id(negocio_id, current_user)
+
+        # Buscar roles do negócio
+        roles_ref = db.collection("roles").where("negocio_id", "==", negocio_id)
+        roles_docs = roles_ref.stream()
+
+        roles = []
+        for doc in roles_docs:
+            role_data = doc.to_dict()
+            role_data["id"] = doc.id
+            role_data["permissions_count"] = len(role_data.get("permissions", []))
+            roles.append(role_data)
+
+        # Ordenar por nível hierárquico
+        roles.sort(key=lambda x: x.get("nivel_hierarquico", 999))
+
+        return {"roles": roles, "total": len(roles)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao listar roles: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao listar roles: {str(e)}")
+
+
+@app.post("/negocios/{negocio_id}/roles", tags=["RBAC - Roles"], status_code=status.HTTP_201_CREATED)
+async def criar_role(
+    negocio_id: str = Path(..., description="ID do negócio"),
+    role_data: schemas.CreateRoleDto = None,
+    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    db = Depends(get_db)
+):
+    """
+    Cria novo role (perfil customizado)
+
+    IMPORTANTE:
+    - Valida limite de perfis do plano contratado
+    - Tipo é genérico (perfil_1, perfil_2, etc)
+    - Nome customizado é definido pelo admin
+    """
+    try:
+        # Verificar acesso ao negócio
+        auth.validate_path_negocio_id(negocio_id, current_user)
+
+        # Verificar se tem permissão para gerenciar permissões
+        if not auth.check_permission(current_user, "settings.manage_permissions", negocio_id, db):
+            raise HTTPException(
+                status_code=403,
+                detail="Você não tem permissão para criar perfis. Permissão necessária: settings.manage_permissions"
+            )
+
+        # Buscar negócio para verificar limite
+        negocio_doc = db.collection("negocios").document(negocio_id).get()
+        if not negocio_doc.exists:
+            raise HTTPException(status_code=404, detail="Negócio não encontrado")
+
+        negocio = negocio_doc.to_dict()
+        perfis_disponiveis = negocio.get("perfis_disponiveis", 5)
+
+        # Contar roles customizados existentes (excluir system roles)
+        roles_existentes = db.collection("roles")\
+            .where("negocio_id", "==", negocio_id)\
+            .where("is_system", "==", False)\
+            .stream()
+
+        count = sum(1 for _ in roles_existentes)
+
+        if count >= perfis_disponiveis:
+            raise HTTPException(
+                status_code=402,  # Payment Required
+                detail=f"Limite de perfis atingido ({perfis_disponiveis}). Faça upgrade do plano."
+            )
+
+        # Validar permissões fornecidas
+        is_valid, invalid_ids = validate_permissions(role_data.permissions)
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Permissões inválidas: {', '.join(invalid_ids)}"
+            )
+
+        # Criar role
+        role_dict = {
+            "negocio_id": negocio_id,
+            "tipo": role_data.tipo,
+            "nivel_hierarquico": role_data.nivel_hierarquico,
+            "nome_customizado": role_data.nome_customizado,
+            "descricao_customizada": role_data.descricao_customizada,
+            "cor": role_data.cor or "#2196F3",
+            "icone": role_data.icone or "person",
+            "permissions": role_data.permissions,
+            "is_active": True,
+            "is_system": False,
+            "created_at": dt.now(),
+            "updated_at": dt.now()
+        }
+
+        # Salvar no Firestore
+        role_ref = db.collection("roles").document()
+        role_ref.set(role_dict)
+
+        # Retornar com ID
+        role_dict["id"] = role_ref.id
+        role_dict["permissions_count"] = len(role_data.permissions)
+
+        logger.info(f"✅ Role criado: {role_dict['nome_customizado']} ({role_ref.id}) - Negócio: {negocio_id}")
+
+        return role_dict
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao criar role: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao criar role: {str(e)}")
+
+
+@app.get("/negocios/{negocio_id}/roles/{role_id}", tags=["RBAC - Roles"])
+async def obter_role(
+    negocio_id: str = Path(..., description="ID do negócio"),
+    role_id: str = Path(..., description="ID do role"),
+    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    db = Depends(get_db)
+):
+    """Obtém detalhes de um role específico"""
+    try:
+        # Verificar acesso ao negócio
+        auth.validate_path_negocio_id(negocio_id, current_user)
+
+        role_doc = db.collection("roles").document(role_id).get()
+
+        if not role_doc.exists:
+            raise HTTPException(status_code=404, detail="Role não encontrado")
+
+        role_data = role_doc.to_dict()
+
+        # Verificar se role pertence ao negócio
+        if role_data.get("negocio_id") != negocio_id:
+            raise HTTPException(status_code=403, detail="Role não pertence a este negócio")
+
+        role_data["id"] = role_doc.id
+        role_data["permissions_count"] = len(role_data.get("permissions", []))
+
+        return role_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao buscar role: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar role: {str(e)}")
+
+
+@app.patch("/negocios/{negocio_id}/roles/{role_id}", tags=["RBAC - Roles"])
+async def atualizar_role(
+    negocio_id: str = Path(..., description="ID do negócio"),
+    role_id: str = Path(..., description="ID do role"),
+    role_data: schemas.UpdateRoleDto = None,
+    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    db = Depends(get_db)
+):
+    """
+    Atualiza role existente
+
+    IMPORTANTE: Não permite editar roles do sistema (is_system=True)
+    """
+    try:
+        # Verificar acesso ao negócio
+        auth.validate_path_negocio_id(negocio_id, current_user)
+
+        # Verificar permissão
+        if not auth.check_permission(current_user, "settings.manage_permissions", negocio_id, db):
+            raise HTTPException(
+                status_code=403,
+                detail="Você não tem permissão para editar perfis"
+            )
+
+        role_ref = db.collection("roles").document(role_id)
+        role_doc = role_ref.get()
+
+        if not role_doc.exists:
+            raise HTTPException(status_code=404, detail="Role não encontrado")
+
+        existing_role = role_doc.to_dict()
+
+        # Verificar se role pertence ao negócio
+        if existing_role.get("negocio_id") != negocio_id:
+            raise HTTPException(status_code=403, detail="Role não pertence a este negócio")
+
+        # Verificar se é role do sistema
+        if existing_role.get("is_system", False):
+            raise HTTPException(status_code=403, detail="Não é possível editar roles do sistema")
+
+        # Validar permissões se fornecidas
+        if role_data.permissions is not None:
+            is_valid, invalid_ids = validate_permissions(role_data.permissions)
+            if not is_valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Permissões inválidas: {', '.join(invalid_ids)}"
+                )
+
+        # Preparar dados para atualização (apenas campos fornecidos)
+        update_data = role_data.model_dump(exclude_unset=True)
+        update_data["updated_at"] = dt.now()
+
+        # Atualizar
+        role_ref.update(update_data)
+
+        # Invalidar cache de permissões
+        invalidate_permissions_cache()
+
+        # Retornar role atualizado
+        updated_role = role_ref.get().to_dict()
+        updated_role["id"] = role_id
+        updated_role["permissions_count"] = len(updated_role.get("permissions", []))
+
+        logger.info(f"✅ Role atualizado: {updated_role['nome_customizado']} ({role_id})")
+
+        return updated_role
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao atualizar role: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao atualizar role: {str(e)}")
+
+
+@app.delete("/negocios/{negocio_id}/roles/{role_id}", tags=["RBAC - Roles"])
+async def excluir_role(
+    negocio_id: str = Path(..., description="ID do negócio"),
+    role_id: str = Path(..., description="ID do role"),
+    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    db = Depends(get_db)
+):
+    """
+    Exclui role (perfil)
+
+    IMPORTANTE:
+    - Não permite excluir roles do sistema
+    - Verifica se há usuários usando este role
+    """
+    try:
+        # Verificar acesso ao negócio
+        auth.validate_path_negocio_id(negocio_id, current_user)
+
+        # Verificar permissão
+        if not auth.check_permission(current_user, "settings.manage_permissions", negocio_id, db):
+            raise HTTPException(
+                status_code=403,
+                detail="Você não tem permissão para excluir perfis"
+            )
+
+        role_ref = db.collection("roles").document(role_id)
+        role_doc = role_ref.get()
+
+        if not role_doc.exists:
+            raise HTTPException(status_code=404, detail="Role não encontrado")
+
+        existing_role = role_doc.to_dict()
+
+        # Verificar se role pertence ao negócio
+        if existing_role.get("negocio_id") != negocio_id:
+            raise HTTPException(status_code=403, detail="Role não pertence a este negócio")
+
+        # Verificar se é role do sistema
+        if existing_role.get("is_system", False):
+            raise HTTPException(status_code=403, detail="Não é possível excluir roles do sistema")
+
+        # Verificar se há usuários usando este role
+        users_with_role = db.collection("usuarios")\
+            .where(f"roles.{negocio_id}", "==", role_id)\
+            .limit(1)\
+            .get()
+
+        if len(users_with_role) > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Não é possível excluir role com usuários atribuídos. Reatribua os usuários primeiro."
+            )
+
+        # Excluir
+        role_ref.delete()
+
+        # Invalidar cache
+        invalidate_permissions_cache()
+
+        logger.info(f"✅ Role excluído: {existing_role['nome_customizado']} ({role_id})")
+
+        return {"message": "Role excluído com sucesso", "role_id": role_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao excluir role: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao excluir role: {str(e)}")
+
+
+@app.get("/negocios/{negocio_id}/usuarios/{usuario_id}/permissions", tags=["RBAC - Permissões"])
+async def listar_permissoes_usuario(
+    negocio_id: str = Path(..., description="ID do negócio"),
+    usuario_id: str = Path(..., description="ID do usuário"),
+    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    db = Depends(get_db)
+):
+    """
+    Lista permissões de um usuário específico
+
+    - Admins podem ver de qualquer usuário
+    - Usuários comuns só veem as próprias
+    """
+    try:
+        # Verificar acesso ao negócio
+        auth.validate_path_negocio_id(negocio_id, current_user)
+
+        # Verificar se é o próprio usuário ou admin
+        is_self = current_user.id == usuario_id
+        is_admin = auth.check_permission(current_user, "settings.manage_permissions", negocio_id, db)
+
+        if not is_self and not is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Você não tem permissão para ver permissões de outros usuários"
+            )
+
+        # Buscar permissões
+        permission_ids = get_user_permissions(db, usuario_id, negocio_id)
+
+        # Buscar detalhes das permissões
+        permissions_details = []
+        for perm_id in permission_ids:
+            perm_doc = db.collection("permissions").document(perm_id).get()
+            if perm_doc.exists:
+                perm_data = perm_doc.to_dict()
+                permissions_details.append(perm_data)
+
+        # Buscar nome do role
+        user_doc = db.collection("usuarios").document(usuario_id).get()
+        role_nome = "Unknown"
+        role_id = None
+
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            role_value = user_data.get("roles", {}).get(negocio_id)
+
+            if isinstance(role_value, str) and role_value in ["admin", "profissional", "tecnico", "medico"]:
+                role_nome = role_value.capitalize()
+                role_id = role_value
+            elif role_value:
+                # É um role customizado
+                role_doc = db.collection("roles").document(role_value).get()
+                if role_doc.exists:
+                    role_data = role_doc.to_dict()
+                    role_nome = role_data.get("nome_customizado", "Unknown")
+                    role_id = role_value
+
+        return {
+            "usuario_id": usuario_id,
+            "negocio_id": negocio_id,
+            "role_id": role_id,
+            "role_nome": role_nome,
+            "permissions": permissions_details,
+            "total": len(permissions_details)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao listar permissões: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao listar permissões: {str(e)}")

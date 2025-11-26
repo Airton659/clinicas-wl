@@ -461,3 +461,250 @@ def get_relatorio_autorizado(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Acesso negado: você não tem permissão para visualizar este relatório."
     )
+
+
+# =================================================================================
+# SISTEMA RBAC - FUNÇÕES DE PERMISSÕES GRANULARES
+# =================================================================================
+
+import time
+from functools import wraps
+from typing import List
+
+# Cache de permissões em memória (5 minutos de TTL)
+_permissions_cache = {}
+_cache_ttl = 300  # 5 minutos
+
+
+def get_user_permissions(db, user_id: str, negocio_id: str) -> List[str]:
+    """
+    Busca permissões do usuário para um negócio específico
+
+    IMPORTANTE: Sistema compatível com roles GENÉRICOS (perfil_1, perfil_2, etc)
+    e também com roles LEGADOS (admin, profissional, tecnico, medico)
+
+    Args:
+        db: Instância do Firestore
+        user_id: Firebase UID do usuário
+        negocio_id: ID do negócio
+
+    Returns:
+        List[str]: Lista de IDs de permissões (ex: ['patients.create', 'patients.read'])
+    """
+    cache_key = f"{user_id}:{negocio_id}"
+
+    # Verificar cache
+    if cache_key in _permissions_cache:
+        cached_data, cached_time = _permissions_cache[cache_key]
+        if time.time() - cached_time < _cache_ttl:
+            return cached_data
+
+    try:
+        # Buscar usuário
+        user_doc = db.collection("usuarios").document(user_id).get()
+        if not user_doc.exists:
+            return []
+
+        user_data = user_doc.to_dict()
+        roles = user_data.get("roles", {})
+
+        # Verificar role do usuário neste negócio
+        role_value = roles.get(negocio_id)
+        if not role_value:
+            return []
+
+        # COMPATIBILIDADE: Roles legados (strings simples)
+        if isinstance(role_value, str):
+            # Admin e platform têm todas as permissões
+            if role_value in ["admin", "platform", "super_admin"]:
+                all_perms = db.collection("permissions").stream()
+                permissions = [perm.id for perm in all_perms]
+                _permissions_cache[cache_key] = (permissions, time.time())
+                return permissions
+
+            # Outros roles legados: usar permissões padrão
+            permissions = _get_default_permissions(role_value)
+            _permissions_cache[cache_key] = (permissions, time.time())
+            return permissions
+
+        # RBAC GENÉRICO: role_value é um ID de documento na collection 'roles'
+        role_id = role_value
+        role_doc = db.collection("roles").document(role_id).get()
+
+        if not role_doc.exists:
+            # Fallback: tentar como role legado
+            return _get_default_permissions(role_id)
+
+        role_data = role_doc.to_dict()
+        permissions = role_data.get("permissions", [])
+
+        # Cache
+        _permissions_cache[cache_key] = (permissions, time.time())
+
+        return permissions
+
+    except Exception as e:
+        print(f"❌ Erro ao buscar permissões: {e}")
+        return []
+
+
+def _get_default_permissions(role_type: str) -> List[str]:
+    """
+    Retorna permissões padrão para roles legados
+
+    IMPORTANTE: Esta função garante backward compatibility
+    Quando migrarmos 100% para RBAC, podemos remover isso
+
+    Args:
+        role_type: Tipo do role legado (profissional, tecnico, medico)
+
+    Returns:
+        List[str]: Lista de permissões padrão
+    """
+    defaults = {
+        # Profissional: acesso amplo (enfermeiro, fisioterapeuta, etc)
+        "profissional": [
+            "patients.read", "patients.update", "patients.link_team",
+            "consultations.create", "consultations.read", "consultations.update",
+            "anamnese.create", "anamnese.read", "anamnese.update",
+            "exams.read", "medications.read",
+            "guidelines.read", "checklist.read",
+            "diary.read",
+            "dashboard.view_own", "team.read"
+        ],
+
+        # Técnico: acesso operacional limitado
+        "tecnico": [
+            "patients.read",
+            "consultations.read",
+            "diary.create", "diary.read", "diary.update",
+            "checklist.read", "checklist.update",
+            "dashboard.view_own"
+        ],
+
+        # Médico: acesso a relatórios médicos
+        "medico": [
+            "patients.read",
+            "consultations.read",
+            "medical_reports.create", "medical_reports.read", "medical_reports.update",
+            "dashboard.view_own"
+        ],
+    }
+
+    return defaults.get(role_type, [])
+
+
+def check_permission(user: schemas.UsuarioProfile, permission: str, negocio_id: str, db) -> bool:
+    """
+    Verifica se usuário tem permissão específica
+
+    Args:
+        user: Objeto UsuarioProfile do usuário
+        permission: ID da permissão (ex: "patients.create")
+        negocio_id: ID do negócio
+        db: Instância do Firestore
+
+    Returns:
+        bool: True se tem permissão, False caso contrário
+    """
+    user_id = user.id
+    if not user_id:
+        return False
+
+    # Super admin (platform) tem tudo
+    roles = user.roles or {}
+    if roles.get("platform") in ["super_admin", "platform", "admin"]:
+        return True
+
+    # Buscar permissões do usuário
+    permissions = get_user_permissions(db, user_id, negocio_id)
+
+    return permission in permissions
+
+
+def require_permission(permission: str):
+    """
+    Decorator para exigir permissão específica em endpoint
+
+    IMPORTANTE: Uso genérico, funciona para qualquer tipo de negócio
+
+    Uso:
+        @app.post("/pacientes")
+        @require_permission("patients.create")
+        async def criar_paciente(...):
+            ...
+
+    Args:
+        permission: ID da permissão necessária (ex: "patients.create")
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Extrair current_user e negocio_id dos kwargs
+            current_user = kwargs.get("current_user")
+            negocio_id = kwargs.get("negocio_id")
+            db = kwargs.get("db")
+
+            if not current_user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Usuário não autenticado"
+                )
+
+            if not negocio_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="negocio_id não fornecido"
+                )
+
+            if not db:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Database não disponível"
+                )
+
+            # Verificar permissão
+            if not check_permission(current_user, permission, negocio_id, db):
+                # Log de tentativa negada
+                user_email = getattr(current_user, 'email', 'unknown')
+                print(f"❌ Acesso negado: {user_email} → {permission} (negocio: {negocio_id})")
+
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Você não tem permissão para esta ação. Permissão necessária: {permission}"
+                )
+
+            # Log de acesso permitido (opcional)
+            user_email = getattr(current_user, 'email', 'unknown')
+            print(f"✅ Acesso permitido: {user_email} → {permission}")
+
+            return await func(*args, **kwargs)
+
+        return wrapper
+    return decorator
+
+
+def invalidate_permissions_cache(user_id: str = None):
+    """
+    Invalida cache de permissões
+
+    IMPORTANTE: Chamar sempre que:
+    - Alterar role de um usuário
+    - Editar permissões de um role
+    - Desativar um role
+
+    Args:
+        user_id: ID do usuário específico (None para invalidar tudo)
+    """
+    global _permissions_cache
+
+    if user_id:
+        # Invalidar apenas deste usuário (em todos os negócios)
+        keys_to_remove = [k for k in _permissions_cache.keys() if k.startswith(f"{user_id}:")]
+        for key in keys_to_remove:
+            del _permissions_cache[key]
+        print(f"🔄 Cache invalidado para usuário: {user_id}")
+    else:
+        # Invalidar tudo
+        _permissions_cache = {}
+        print(f"🔄 Cache de permissões totalmente invalidado")

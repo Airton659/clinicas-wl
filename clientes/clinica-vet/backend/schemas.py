@@ -969,3 +969,104 @@ class StatusSolicitacaoExclusaoResponse(BaseModel):
     prazo_exclusao: datetime = Field(..., description="Prazo para efetivação")
     motivo: Optional[str] = Field(None, description="Motivo informado")
     dias_restantes: int = Field(..., description="Dias restantes para efetivação")
+
+
+# =================================================================================
+# SCHEMAS RBAC - SISTEMA DE PERMISSÕES GRANULARES
+# =================================================================================
+
+class Permission(BaseModel):
+    """Schema de Permissão Individual"""
+    id: str = Field(..., description="ID único da permissão (ex: 'patients.create')")
+    categoria: str = Field(..., description="Categoria da permissão (ex: 'Pacientes')")
+    nome: str = Field(..., description="Nome amigável da permissão")
+    descricao: str = Field(..., description="Descrição detalhada do que a permissão permite")
+    recurso: str = Field(..., description="Recurso ao qual a permissão se aplica (ex: 'patients')")
+    acao: str = Field(..., description="Ação permitida (ex: 'create', 'read', 'update', 'delete')")
+
+
+class Role(BaseModel):
+    """
+    Schema de Role (Perfil) Customizável
+
+    IMPORTANTE: Usa tipos GENÉRICOS (perfil_1, perfil_2, etc)
+    O nome_customizado é o que aparece na UI e pode ser:
+    - Clínica Médica: "Enfermeiro", "Médico", "Técnico"
+    - Veterinária: "Veterinário", "Auxiliar Veterinário"
+    - Fisioterapia: "Fisioterapeuta", "Terapeuta"
+    etc.
+    """
+    id: Optional[str] = Field(None, description="ID do documento no Firestore")
+    negocio_id: str = Field(..., description="ID do negócio ao qual o role pertence")
+    tipo: str = Field(..., description="Tipo genérico: perfil_admin, perfil_1, perfil_2, etc")
+    nivel_hierarquico: int = Field(..., ge=1, le=10, description="Nível hierárquico (1=mais alto, 10=mais baixo)")
+
+    # Customização visual (definida pelo admin)
+    nome_customizado: str = Field(..., min_length=1, max_length=50, description="Nome customizado pelo admin (ex: 'Veterinário')")
+    descricao_customizada: Optional[str] = Field(None, max_length=200, description="Descrição customizada")
+    cor: Optional[str] = Field("#2196F3", description="Cor hexadecimal para UI (ex: '#4CAF50')")
+    icone: Optional[str] = Field("person", description="Nome do ícone Material Icons")
+
+    # Permissões
+    permissions: List[str] = Field(default_factory=list, description="Lista de IDs de permissões (ex: ['patients.create', 'patients.read'])")
+
+    # Metadados
+    is_active: bool = Field(True, description="Se o role está ativo")
+    is_system: bool = Field(False, description="Se é um role padrão do sistema (não pode ser editado)")
+    created_at: Optional[datetime] = Field(None, description="Data de criação")
+    updated_at: Optional[datetime] = Field(None, description="Data de última atualização")
+
+
+class CreateRoleDto(BaseModel):
+    """DTO para criação de novo Role"""
+    tipo: str = Field(..., description="Tipo genérico: perfil_1, perfil_2, etc (gerado automaticamente)")
+    nivel_hierarquico: int = Field(..., ge=1, le=10, description="Nível hierárquico")
+    nome_customizado: str = Field(..., min_length=1, max_length=50, description="Nome do perfil")
+    descricao_customizada: Optional[str] = Field(None, max_length=200)
+    cor: Optional[str] = Field("#2196F3")
+    icone: Optional[str] = Field("person")
+    permissions: List[str] = Field(default_factory=list, description="IDs das permissões")
+
+
+class UpdateRoleDto(BaseModel):
+    """DTO para atualização de Role existente"""
+    nivel_hierarquico: Optional[int] = Field(None, ge=1, le=10)
+    nome_customizado: Optional[str] = Field(None, min_length=1, max_length=50)
+    descricao_customizada: Optional[str] = Field(None, max_length=200)
+    cor: Optional[str] = None
+    icone: Optional[str] = None
+    permissions: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+
+class AssignRoleDto(BaseModel):
+    """DTO para atribuir Role a um usuário"""
+    usuario_id: str = Field(..., description="ID do usuário")
+    role_id: str = Field(..., description="ID do role a ser atribuído")
+
+
+class RoleResponse(BaseModel):
+    """Schema de resposta com Role completo"""
+    id: str
+    negocio_id: str
+    tipo: str
+    nivel_hierarquico: int
+    nome_customizado: str
+    descricao_customizada: Optional[str]
+    cor: Optional[str]
+    icone: Optional[str]
+    permissions: List[str]
+    permissions_count: int = Field(..., description="Quantidade de permissões")
+    is_active: bool
+    is_system: bool
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+
+class UserPermissionsResponse(BaseModel):
+    """Schema de resposta com permissões de um usuário"""
+    usuario_id: str
+    negocio_id: str
+    role_id: str
+    role_nome: str = Field(..., description="Nome customizado do role")
+    permissions: List[Permission] = Field(..., description="Lista completa de permissões do usuário")

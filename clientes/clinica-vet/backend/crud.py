@@ -3679,16 +3679,18 @@ def listar_checklist_diario(db: firestore.client, paciente_id: str, dia: date, n
 
         col_ref = db.collection('usuarios').document(paciente_id).collection('checklist')
 
+        # Query SEM order_by para evitar problema de índice composto
         query = (
             col_ref
             .where('paciente_id', '==', paciente_id)
             .where('negocio_id', '==', negocio_id)
             .where('data_criacao', '>=', start_dt)
             .where('data_criacao', '<', end_dt)
-            .order_by('data_criacao')
         )
 
         docs = list(query.stream())
+        # Ordena em Python
+        docs.sort(key=lambda doc: doc.to_dict().get('data_criacao', datetime.min))
 
         itens: List[Dict] = []
         for doc in docs:
@@ -3808,8 +3810,14 @@ def listar_checklist_diario_com_replicacao(db: firestore.client, paciente_id: st
             return [{'id': doc.id, 'descricao': doc.to_dict().get('descricao_item', ''), 'concluido': doc.to_dict().get('concluido', False)} for doc in docs_hoje]
 
         # 2. Se não encontrou, busca a data do último checklist disponível
-        query_ultimo_dia = col_ref.where('negocio_id', '==', negocio_id).where('data_criacao', '<', start_dt).order_by('data_criacao', direction=firestore.Query.DESCENDING).limit(1)
+        # Query SEM order_by para evitar problema de índice composto
+        query_ultimo_dia = col_ref.where('negocio_id', '==', negocio_id).where('data_criacao', '<', start_dt)
         docs_anteriores = list(query_ultimo_dia.stream())
+
+        # Ordena em Python e pega o mais recente
+        if docs_anteriores:
+            docs_anteriores.sort(key=lambda doc: doc.to_dict().get('data_criacao', datetime.min), reverse=True)
+            docs_anteriores = [docs_anteriores[0]]  # Mantém apenas o mais recente
         
         if not docs_anteriores:
             logger.info(f"Nenhum checklist encontrado para hoje ou dias anteriores para o paciente {paciente_id}.")
@@ -3886,16 +3894,18 @@ def get_checklist_diario_plano_ativo(db: firestore.client, paciente_id: str, dia
         # 1. Encontrar o plano de cuidado (consulta) válido para a data solicitada.
         end_of_day = datetime.combine(dia, time.max)
         consulta_ref = db.collection('usuarios').document(paciente_id).collection('consultas')
-        query_plano_valido = consulta_ref.where('created_at', '<=', end_of_day)\
-                                         .order_by('created_at', direction=firestore.Query.DESCENDING)\
-                                         .limit(1)
-        
+
+        # Query SEM order_by para evitar problema de índice composto
+        query_plano_valido = consulta_ref.where('created_at', '<=', end_of_day)
+
         docs_plano_valido = list(query_plano_valido.stream())
 
         if not docs_plano_valido:
             logger.info(f"Nenhum plano de cuidado ativo para {paciente_id} em {dia.isoformat()}.")
             return []
-            
+
+        # Ordena em Python e pega o mais recente
+        docs_plano_valido.sort(key=lambda doc: doc.to_dict().get('created_at', datetime.min), reverse=True)
         plano_valido_id = docs_plano_valido[0].id
         logger.info(f"Plano válido para {dia.isoformat()} é a consulta {plano_valido_id}.")
 
@@ -3907,13 +3917,19 @@ def get_checklist_diario_plano_ativo(db: firestore.client, paciente_id: str, dia
         col_ref = db.collection('usuarios').document(paciente_id).collection('checklist')
         start_dt = datetime.combine(dia, time.min)
         end_dt = datetime.combine(dia, time.max)
-        
+
+        # Query simplificada SEM múltiplos where para evitar índice composto
+        # Filtramos apenas por consulta_id e negocio_id, e fazemos o filtro de data em Python
         query_checklist_do_dia = col_ref.where('negocio_id', '==', negocio_id)\
-                                        .where('data_criacao', '>=', start_dt)\
-                                        .where('data_criacao', '<=', end_dt)\
                                         .where('consulta_id', '==', plano_valido_id)
-        
-        docs_checklist_do_dia = list(query_checklist_do_dia.stream())
+
+        all_docs = list(query_checklist_do_dia.stream())
+
+        # Filtra por data em Python
+        docs_checklist_do_dia = [
+            doc for doc in all_docs
+            if start_dt <= doc.to_dict().get('data_criacao', datetime.min) <= end_dt
+        ]
 
         # Se não encontrou e a data for HOJE, replica o checklist.
         if not docs_checklist_do_dia and dia == date.today():
@@ -4699,8 +4715,11 @@ def _popular_criado_por(db: firestore.client, relatorio_dict: Dict) -> Dict:
     Popula o campo 'criado_por' no relatório com os dados do usuário que o criou.
     Retorna o relatório com o campo 'criado_por' adicionado (ou None se não encontrar).
     """
+    logger.info(f"🔵🔵🔵 EXECUTANDO _popular_criado_por para relatório {relatorio_dict.get('id', 'UNKNOWN')}")
     criado_por_id = relatorio_dict.get('criado_por_id')
+    logger.info(f"   criado_por_id encontrado: {criado_por_id}")
     if not criado_por_id:
+        logger.warning("⚠️⚠️⚠️ Relatório sem criado_por_id")
         relatorio_dict['criado_por'] = None
         return relatorio_dict
 
@@ -4709,24 +4728,43 @@ def _popular_criado_por(db: firestore.client, relatorio_dict: Dict) -> Dict:
         if criador_doc.exists:
             criador_data = criador_doc.to_dict()
             nome_criador = criador_data.get('nome', '')
+            email_criador = criador_data.get('email', '')
 
             # Descriptografar nome se necessário
             if nome_criador:
                 try:
-                    nome_criador = decrypt_data(nome_criador)
-                except Exception as e:
-                    logger.error(f"Erro ao descriptografar nome do criador {criado_por_id}: {e}")
-                    nome_criador = "[Erro na descriptografia]"
+                    nome_descriptografado = decrypt_data(nome_criador)
+                    # Se conseguiu descriptografar, usa o nome descriptografado
+                    nome_criador = nome_descriptografado
+                except Exception:
+                    # Se falhou ao descriptografar, assume que já está descriptografado
+                    # (pode ser admin/enfermeiro sem criptografia)
+                    logger.info(f"Nome do criador {criado_por_id} não está criptografado ou já foi descriptografado")
+                    pass
+
+            # Descriptografar email se necessário
+            if email_criador:
+                try:
+                    email_descriptografado = decrypt_data(email_criador)
+                    email_criador = email_descriptografado
+                except Exception:
+                    # Email não está criptografado
+                    pass
+
+            logger.info(f"✅ Criador populado: {nome_criador} ({email_criador})")
 
             relatorio_dict['criado_por'] = {
                 'id': criado_por_id,
-                'nome': nome_criador,
-                'email': criador_data.get('email', '')
+                'nome': nome_criador if nome_criador else 'Nome não disponível',
+                'email': email_criador
             }
         else:
+            logger.warning(f"Criador {criado_por_id} não encontrado no banco de dados")
             relatorio_dict['criado_por'] = None
     except Exception as e:
         logger.error(f"Erro ao popular criado_por para relatório: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         relatorio_dict['criado_por'] = None
 
     return relatorio_dict
@@ -4787,12 +4825,15 @@ def listar_relatorios_por_paciente(db: firestore.client, paciente_id: str) -> Li
     """
     relatorios = []
     try:
+        logger.info(f"🔍 DEBUG: Buscando relatórios para paciente_id={paciente_id}")
+
         query = db.collection('relatorios_medicos') \
             .where('paciente_id', '==', paciente_id) \
             .order_by('data_criacao', direction=firestore.Query.DESCENDING)
-        
+
         profissionais_cache = {}
-        
+
+        logger.info(f"🔍 DEBUG: Query criada, iniciando stream...")
         for doc in query.stream():
             data = doc.to_dict()
             data['id'] = doc.id
@@ -4855,12 +4896,13 @@ def listar_relatorios_por_paciente(db: firestore.client, paciente_id: str) -> Li
                 data['criado_por'] = None
             
             relatorios.append(data)
-        
+
+        logger.info(f"🔍 DEBUG: Total de relatórios encontrados: {len(relatorios)}")
         # --- CORREÇÃO ADICIONAL: MOVER O RETURN PARA FORA DO LOOP ---
         return relatorios
-            
+
     except Exception as e:
-        logger.error(f"Erro ao listar relatórios para o paciente {paciente_id}: {e}")
+        logger.error(f"❌ ERRO COMPLETO ao listar relatórios para paciente {paciente_id}: {e}", exc_info=True)
         # --- CORREÇÃO ADICIONAL: RETORNAR LISTA VAZIA EM CASO DE ERRO NA QUERY ---
         return []
     
@@ -4991,6 +5033,8 @@ def listar_relatorios_pendentes_medico(db: firestore.client, medico_id: str, neg
             logger.info(f"   - negocio_id: {data.get('negocio_id')}")
             logger.info(f"   - status: {data.get('status')}")
             logger.info(f"   - paciente: {data.get('paciente', {}).get('nome', 'N/A')}")
+            logger.info(f"   - criado_por_id: {data.get('criado_por_id', 'N/A')}")
+            logger.info(f"   - criado_por: {data.get('criado_por', 'N/A')}")
         
         # Ordenar manualmente por data_criacao (mais recente primeiro)
         relatorios.sort(key=lambda x: x.get('data_criacao', datetime.min), reverse=True)
@@ -5881,123 +5925,129 @@ def atualizar_relatorio_medico(db: firestore.client, relatorio_id: str, update_d
 def listar_historico_relatorios_medico(db: firestore.client, medico_id: str, negocio_id: str, status_filter: Optional[str] = None) -> List[Dict]:
     """
     Lista o histórico de relatórios já avaliados pelo médico (aprovados + recusados).
-    
-    Args:
-        db: Cliente Firestore
-        medico_id: ID do médico
-        negocio_id: ID do negócio
-        status_filter: Filtro opcional por status ('aprovado' ou 'recusado')
-    
-    Returns:
-        Lista de relatórios com dados do paciente descriptografados
+    COPIADO DA FUNÇÃO DE PENDENTES QUE FUNCIONA
     """
-    try:
-        logger.info(f"🔍 DEBUG HISTÓRICO RELATÓRIOS:")
-        logger.info(f"   - medico_id: {medico_id}")
-        logger.info(f"   - negocio_id: {negocio_id}")
-        logger.info(f"   - status_filter: {status_filter}")
-        
-        # Verificar se existem relatórios para este médico em geral
-        query_medico = db.collection('relatorios_medicos').where('medico_id', '==', medico_id)
-        count_medico = len(list(query_medico.stream()))
-        logger.info(f"   - Total de relatórios para este médico: {count_medico}")
-        
-        # Verificar relatórios aprovados/recusados para este médico
-        query_aprovados_geral = db.collection('relatorios_medicos').where('medico_id', '==', medico_id).where('status', '==', 'aprovado')
-        count_aprovados = len(list(query_aprovados_geral.stream()))
-        query_recusados_geral = db.collection('relatorios_medicos').where('medico_id', '==', medico_id).where('status', '==', 'recusado')
-        count_recusados = len(list(query_recusados_geral.stream()))
-        logger.info(f"   - Relatórios aprovados para este médico: {count_aprovados}")
-        logger.info(f"   - Relatórios recusados para este médico: {count_recusados}")
-        
-        # Query base - relatórios avaliados pelo médico no negócio
-        query = db.collection("relatorios_medicos") \
-            .where("medico_id", "==", medico_id) \
-            .where("negocio_id", "==", negocio_id)
-        
-        # Se status específico foi fornecido, filtrar por ele
-        if status_filter and status_filter.lower() in ['aprovado', 'recusado']:
-            query = query.where("status", "==", status_filter.lower())
-        else:
-            # Sem filtro específico - buscar apenas aprovados e recusados
-            # Como Firestore não suporta "IN" com outros filtros, fazemos duas queries
-            query_aprovados = query.where("status", "==", "aprovado")
-            query_recusados = query.where("status", "==", "recusado")
-            
-            # Executar ambas as queries e combinar resultados
-            docs_aprovados = list(query_aprovados.stream())
-            docs_recusados = list(query_recusados.stream())
-            docs = docs_aprovados + docs_recusados
-        
-        if status_filter:
-            docs = list(query.stream())
-        
-        logger.info(f"Encontrados {len(docs)} relatórios avaliados")
-        
-        if not docs:
-            return []
-        
-        relatorios = []
-        
-        for doc in docs:
-            relatorio_data = doc.to_dict()
-            relatorio_data["id"] = doc.id
-            
-            # Buscar dados do paciente
-            paciente_id = relatorio_data.get("paciente_id")
+    logger.info(f"🟢🟢🟢 [VERSÃO NOVA] FUNÇÃO HISTÓRICO CHAMADA - medico: {medico_id}, negocio: {negocio_id}, filtro: {status_filter}")
+    relatorios = []
+
+    # Query base
+    query = db.collection('relatorios_medicos') \
+        .where('negocio_id', '==', negocio_id) \
+        .where('medico_id', '==', medico_id)
+
+    # Se tem filtro específico, aplica
+    if status_filter and status_filter.lower() in ['aprovado', 'recusado']:
+        query = query.where('status', '==', status_filter.lower())
+    # Senão, busca aprovados E recusados
+    else:
+        # Firestore não suporta OR, então fazemos 2 queries
+        query_aprovados = query.where('status', '==', 'aprovado')
+        query_recusados = query.where('status', '==', 'recusado')
+
+        # Combina resultados
+        docs_all = []
+        docs_all.extend(list(query_aprovados.stream()))
+        docs_all.extend(list(query_recusados.stream()))
+
+        # Processa cada doc
+        for doc in docs_all:
+            data = doc.to_dict()
+            data['id'] = doc.id
+
+            # Buscar dados do paciente (IGUAL AOS PENDENTES)
+            paciente_id = data.get('paciente_id')
             if paciente_id:
                 try:
-                    paciente_ref = db.collection("usuarios").document(paciente_id)
-                    paciente_doc = paciente_ref.get()
-                    
+                    paciente_doc = db.collection('usuarios').document(paciente_id).get()
                     if paciente_doc.exists:
                         paciente_data = paciente_doc.to_dict()
-                        
-                        # Descriptografar dados sensíveis do paciente para médicos
+                        paciente_info = {
+                            'id': paciente_id,
+                            'email': paciente_data.get('email', '')
+                        }
+
                         if 'nome' in paciente_data and paciente_data['nome']:
                             try:
-                                paciente_data['nome'] = decrypt_data(paciente_data['nome'])
+                                paciente_info['nome'] = decrypt_data(paciente_data['nome'])
                             except Exception as e:
                                 logger.error(f"Erro ao descriptografar nome do paciente {paciente_id}: {e}")
-                                paciente_data['nome'] = "[Erro na descriptografia]"
-                        
-                        if 'email' in paciente_data and paciente_data['email']:
-                            try:
-                                paciente_data['email'] = decrypt_data(paciente_data['email'])
-                            except Exception as e:
-                                logger.error(f"Erro ao descriptografar email do paciente {paciente_id}: {e}")
-                                paciente_data['email'] = "[Erro na descriptografia]"
-                        
-                        if 'telefone' in paciente_data and paciente_data['telefone']:
-                            try:
-                                paciente_data['telefone'] = decrypt_data(paciente_data['telefone'])
-                            except Exception as e:
-                                logger.error(f"Erro ao descriptografar telefone do paciente {paciente_id}: {e}")
-                                paciente_data['telefone'] = "[Erro na descriptografia]"
-                        
-                        # Adicionar dados do paciente ao relatório
-                        relatorio_data["paciente"] = paciente_data
+                                paciente_info['nome'] = "[Erro na descriptografia]"
+                        else:
+                            paciente_info['nome'] = "Nome não disponível"
+
+                        data['paciente'] = paciente_info
                     else:
-                        logger.warning(f"Paciente {paciente_id} não encontrado")
-                        relatorio_data["paciente"] = {"nome": "[Paciente não encontrado]"}
-                        
+                        data['paciente'] = {
+                            'id': paciente_id,
+                            'nome': 'Paciente não encontrado',
+                            'email': ''
+                        }
                 except Exception as e:
                     logger.error(f"Erro ao buscar dados do paciente {paciente_id}: {e}")
-                    relatorio_data["paciente"] = {"nome": "[Erro ao carregar paciente]"}
-            else:
-                relatorio_data["paciente"] = {"nome": "[ID do paciente não informado]"}
-            
-            relatorios.append(relatorio_data)
-        
-        # Ordenar por data de avaliação (mais recentes primeiro)
-        relatorios.sort(key=lambda x: x.get('data_avaliacao', datetime.min), reverse=True)
-        
-        logger.info(f"Retornando {len(relatorios)} relatórios do histórico")
+                    data['paciente'] = {
+                        'id': paciente_id,
+                        'nome': 'Erro ao carregar dados',
+                        'email': ''
+                    }
+
+            # Popula informações do criador (IGUAL AOS PENDENTES)
+            data = _popular_criado_por(db, data)
+
+            relatorios.append(data)
+
+        # Ordenar por data de avaliação
+        relatorios.sort(key=lambda x: x.get('data_revisao', datetime.min), reverse=True)
         return relatorios
-        
-    except Exception as e:
-        logger.error(f"Erro ao listar histórico de relatórios do médico {medico_id}: {e}")
-        return []
+
+    # Se tem filtro, executa query única
+    for doc in query.stream():
+        data = doc.to_dict()
+        data['id'] = doc.id
+
+        # Buscar dados do paciente (IGUAL AOS PENDENTES)
+        paciente_id = data.get('paciente_id')
+        if paciente_id:
+            try:
+                paciente_doc = db.collection('usuarios').document(paciente_id).get()
+                if paciente_doc.exists:
+                    paciente_data = paciente_doc.to_dict()
+                    paciente_info = {
+                        'id': paciente_id,
+                        'email': paciente_data.get('email', '')
+                    }
+
+                    if 'nome' in paciente_data and paciente_data['nome']:
+                        try:
+                            paciente_info['nome'] = decrypt_data(paciente_data['nome'])
+                        except Exception as e:
+                            logger.error(f"Erro ao descriptografar nome do paciente {paciente_id}: {e}")
+                            paciente_info['nome'] = "[Erro na descriptografia]"
+                    else:
+                        paciente_info['nome'] = "Nome não disponível"
+
+                    data['paciente'] = paciente_info
+                else:
+                    data['paciente'] = {
+                        'id': paciente_id,
+                        'nome': 'Paciente não encontrado',
+                        'email': ''
+                    }
+            except Exception as e:
+                logger.error(f"Erro ao buscar dados do paciente {paciente_id}: {e}")
+                data['paciente'] = {
+                    'id': paciente_id,
+                    'nome': 'Erro ao carregar dados',
+                    'email': ''
+                }
+
+        # Popula informações do criador (IGUAL AOS PENDENTES)
+        data = _popular_criado_por(db, data)
+
+        relatorios.append(data)
+
+    # Ordenar por data de avaliação
+    relatorios.sort(key=lambda x: x.get('data_revisao', datetime.min), reverse=True)
+    return relatorios
 
 
 # =================================================================================
