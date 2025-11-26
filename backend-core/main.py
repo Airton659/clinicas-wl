@@ -12,6 +12,7 @@ import logging
 from datetime import date, timedelta, datetime
 from crypto_utils import decrypt_data
 from database import initialize_firebase_app, get_db
+import auth
 from auth import (
     get_current_user_firebase, get_super_admin_user, get_current_admin_user,
     get_current_profissional_user, get_optional_current_user_firebase,
@@ -19,7 +20,8 @@ from auth import (
     get_current_admin_or_profissional_user, get_current_tecnico_user,
     get_current_admin_or_tecnico_user,
     get_paciente_autorizado_anamnese, get_current_medico_user, get_relatorio_autorizado,
-    get_admin_or_profissional_autorizado_paciente
+    get_admin_or_profissional_autorizado_paciente,
+    require_permission, invalidate_permissions_cache, get_user_permissions
 )
 from firebase_admin import firestore, messaging
 from pydantic import BaseModel
@@ -3439,7 +3441,6 @@ def testar_notificacao_tarefa_atrasada(
 # =================================================================================
 
 from permissions_catalog import get_all_permissions, get_permissions_by_category, validate_permissions
-from auth import require_permission, invalidate_permissions_cache, get_user_permissions
 from datetime import datetime as dt
 
 
