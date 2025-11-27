@@ -31,6 +31,7 @@ from io import BytesIO
 import os
 import uuid
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 # --- Modelo para a requisição de promoção ---
 class PromoteRequest(BaseModel):
@@ -83,6 +84,17 @@ app.add_middleware(
 # Adicionar um logger para ajudar no debug
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Exception handler para erros de validação
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    logger.error(f"❌ VALIDATION_ERROR: {request.method} {request.url.path}")
+    logger.error(f"❌ VALIDATION_ERROR: Body errors: {exc.errors()}")
+    logger.error(f"❌ VALIDATION_ERROR: Body received: {exc.body}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": exc.errors(), "body": str(exc.body)},
+    )
 
 CLOUD_STORAGE_BUCKET_NAME_GLOBAL = os.getenv("CLOUD_STORAGE_BUCKET_NAME")
 
@@ -215,7 +227,8 @@ def set_usuario_status(
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/negocios/{negocio_id}/pacientes", response_model=schemas.UsuarioProfile, tags=["Admin - Gestão do Negócio"])
-def criar_paciente_por_admin(
+@require_permission("patients.create")
+async def criar_paciente_por_admin(
     paciente_data: schemas.PacienteCreateByAdmin,
     negocio_id: str = Depends(validate_path_negocio_id),
     current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
@@ -243,6 +256,7 @@ def atualizar_role_usuario(
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Atualiza o papel de um usuário (para 'cliente', 'profissional', 'tecnico', etc.)."""
+    logger.info(f"🎯 ENDPOINT_DEBUG: PATCH /role - user_id={user_id}, negocio_id={negocio_id}, novo_role='{role_update.role}'")
     try:
         usuario_atualizado = crud.admin_atualizar_role_usuario(
             db, negocio_id, user_id, role_update.role, admin.firebase_uid
@@ -356,7 +370,8 @@ def desvincular_paciente(
     return paciente_atualizado
 
 @app.patch("/negocios/{negocio_id}/pacientes/{paciente_id}/vincular-tecnicos", response_model=schemas.UsuarioProfile, tags=["Admin - Gestão do Negócio"])
-def vincular_tecnicos_ao_paciente(
+@require_permission("patients.link_team")
+async def vincular_tecnicos_ao_paciente(
     negocio_id: str = Depends(validate_path_negocio_id),
     paciente_id: str = Path(..., description="ID do paciente a ser modificado."),
     vinculo_data: schemas.TecnicosVincularRequest = ...,
@@ -378,7 +393,8 @@ def vincular_tecnicos_ao_paciente(
         raise HTTPException(status_code=500, detail="Ocorreu um erro interno no servidor.")
 
 @app.post("/negocios/{negocio_id}/pacientes/{paciente_id}/vincular-medico", response_model=schemas.UsuarioProfile, tags=["Admin - Gestão do Negócio"])
-def vincular_medico_ao_paciente(
+@require_permission("patients.link_team")
+async def vincular_medico_ao_paciente(
     negocio_id: str = Depends(validate_path_negocio_id),
     paciente_id: str = Path(..., description="ID do paciente a ser modificado."),
     vinculo_data: schemas.MedicoVincularRequest = ...,
@@ -446,7 +462,8 @@ def vincular_ou_desvincular_supervisor( # Nome alterado para clareza
 # =================================================================================
 
 @app.post("/pacientes/{paciente_id}/consultas", response_model=schemas.ConsultaResponse, status_code=status.HTTP_201_CREATED, tags=["Ficha do Paciente"])
-def adicionar_consulta(
+@require_permission("appointments.create")
+async def adicionar_consulta(
     paciente_id: str,
     consulta_data: schemas.ConsultaCreate,
     current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
@@ -457,7 +474,8 @@ def adicionar_consulta(
     return crud.criar_consulta(db, consulta_data)
 
 @app.post("/pacientes/{paciente_id}/exames", response_model=schemas.ExameResponse, status_code=status.HTTP_201_CREATED, tags=["Ficha do Paciente"])
-def adicionar_exame(
+@require_permission("exams.create")
+async def adicionar_exame(
     paciente_id: str,
     exame_data: schemas.ExameCreate,
     # ***** A CORREÇÃO ESTÁ AQUI *****
@@ -476,7 +494,8 @@ def adicionar_exame(
     return crud.adicionar_exame(db, exame_data_completo, current_user.firebase_uid)
 
 @app.post("/pacientes/{paciente_id}/medicacoes", response_model=schemas.MedicacaoResponse, status_code=status.HTTP_201_CREATED, tags=["Ficha do Paciente"])
-def adicionar_medicacao(
+@require_permission("medications.create")
+async def adicionar_medicacao(
     paciente_id: str,
     medicacao_data: schemas.MedicacaoCreate,
     consulta_id: Optional[str] = Query(None, description="ID da consulta (query param ou body)"),
@@ -499,7 +518,8 @@ def adicionar_medicacao(
     return crud.prescrever_medicacao(db, medicacao_data, final_consulta_id)
 
 @app.post("/pacientes/{paciente_id}/checklist-itens", response_model=schemas.ChecklistItemResponse, status_code=status.HTTP_201_CREATED, tags=["Ficha do Paciente"])
-def adicionar_checklist_item(
+@require_permission("checklist.create")
+async def adicionar_checklist_item(
     paciente_id: str,
     item_data: schemas.ChecklistItemCreate,
     consulta_id: Optional[str] = Query(None, description="ID da consulta (query param ou body)"),
@@ -522,7 +542,8 @@ def adicionar_checklist_item(
     return crud.adicionar_item_checklist(db, item_data, final_consulta_id)
 
 @app.post("/pacientes/{paciente_id}/orientacoes", response_model=schemas.OrientacaoResponse, status_code=status.HTTP_201_CREATED, tags=["Ficha do Paciente"])
-def adicionar_orientacao(
+@require_permission("guidelines.create")
+async def adicionar_orientacao(
     paciente_id: str,
     orientacao_data: schemas.OrientacaoCreate,
     consulta_id: Optional[str] = Query(None, description="ID da consulta (query param ou body)"),
@@ -545,7 +566,8 @@ def adicionar_orientacao(
     return crud.criar_orientacao(db, orientacao_data, final_consulta_id)
 
 @app.get("/pacientes/{paciente_id}/ficha-completa", response_model=schemas.FichaCompletaResponse, tags=["Ficha do Paciente"])
-def get_ficha_completa(
+@require_permission("patients.view")
+async def get_ficha_completa(
     paciente_id: str,
     consulta_id: Optional[str] = Query(None, description="Opcional: força o retorno da consulta informada."),
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
@@ -562,7 +584,8 @@ def get_ficha_completa(
     return crud.get_ficha_completa_paciente(db, paciente_id)
 
 @app.get("/pacientes/{paciente_id}/consultas", response_model=List[schemas.ConsultaResponse], tags=["Ficha do Paciente"])
-def get_consultas(
+@require_permission("appointments.view")
+async def get_consultas(
     paciente_id: str,
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
     db: firestore.client = Depends(get_db)
@@ -571,7 +594,8 @@ def get_consultas(
     return crud.listar_consultas(db, paciente_id)
 
 @app.get("/pacientes/{paciente_id}/exames", response_model=List[schemas.ExameResponse], tags=["Ficha do Paciente"])
-def get_exames(
+@require_permission("exams.view")
+async def get_exames(
     paciente_id: str,
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
     db: firestore.client = Depends(get_db)
@@ -581,7 +605,8 @@ def get_exames(
     return crud.listar_exames(db, paciente_id)
 
 @app.put("/pacientes/{paciente_id}/exames/{exame_id}", response_model=schemas.ExameResponse, tags=["Ficha do Paciente"])
-def update_exame(
+@require_permission("exams.update")
+async def update_exame(
     paciente_id: str,
     exame_id: str,
     update_data: schemas.ExameUpdate,
@@ -600,7 +625,8 @@ def update_exame(
         raise e
 
 @app.get("/pacientes/{paciente_id}/medicacoes", response_model=List[schemas.MedicacaoResponse], tags=["Ficha do Paciente"])
-def get_medicacoes(
+@require_permission("medications.view")
+async def get_medicacoes(
     paciente_id: str,
     consulta_id: Optional[str] = Query(None, description="Filtre as medicações por um ID de consulta específico."),
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
@@ -610,7 +636,8 @@ def get_medicacoes(
     return crud.listar_medicacoes(db, paciente_id, consulta_id)
 
 @app.get("/pacientes/{paciente_id}/checklist-itens", response_model=List[schemas.ChecklistItemResponse], tags=["Ficha do Paciente"])
-def get_checklist_itens(
+@require_permission("checklist.view")
+async def get_checklist_itens(
     paciente_id: str,
     consulta_id: Optional[str] = Query(None, description="Filtre os itens do checklist por um ID de consulta específico."),
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
@@ -620,7 +647,8 @@ def get_checklist_itens(
     return crud.listar_checklist(db, paciente_id, consulta_id)
 
 @app.get("/pacientes/{paciente_id}/orientacoes", response_model=List[schemas.OrientacaoResponse], tags=["Ficha do Paciente"])
-def get_orientacoes(
+@require_permission("guidelines.view")
+async def get_orientacoes(
     paciente_id: str,
     consulta_id: Optional[str] = Query(None, description="Filtre as orientações por um ID de consulta específico."),
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
@@ -630,7 +658,8 @@ def get_orientacoes(
     return crud.listar_orientacoes(db, paciente_id, consulta_id)
 
 @app.patch("/pacientes/{paciente_id}/consultas/{consulta_id}", response_model=schemas.ConsultaResponse, tags=["Ficha do Paciente"])
-def update_consulta(
+@require_permission("appointments.update")
+async def update_consulta(
     paciente_id: str,
     consulta_id: str,
     update_data: schemas.ConsultaUpdate,
@@ -644,7 +673,8 @@ def update_consulta(
     return consulta_atualizada
 
 @app.delete("/pacientes/{paciente_id}/consultas/{consulta_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Ficha do Paciente"])
-def delete_consulta(
+@require_permission("appointments.delete")
+async def delete_consulta(
     paciente_id: str,
     consulta_id: str,
     current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
@@ -656,7 +686,8 @@ def delete_consulta(
     return
 
 @app.patch("/pacientes/{paciente_id}/exames/{exame_id}", response_model=schemas.ExameResponse, tags=["Ficha do Paciente"])
-def update_exame(
+@require_permission("exams.update")
+async def update_exame_patch(
     paciente_id: str,
     exame_id: str,
     update_data: schemas.ExameUpdate,
@@ -670,7 +701,8 @@ def update_exame(
     return exame_atualizado
 
 @app.delete("/pacientes/{paciente_id}/exames/{exame_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Ficha do Paciente"])
-def delete_exame(
+@require_permission("exams.delete")
+async def delete_exame(
     paciente_id: str,
     exame_id: str,
     negocio_id: str = Depends(validate_negocio_id),
@@ -687,7 +719,8 @@ def delete_exame(
     return
 
 @app.patch("/pacientes/{paciente_id}/medicacoes/{medicacao_id}", response_model=schemas.MedicacaoResponse, tags=["Ficha do Paciente"])
-def update_medicacao(
+@require_permission("medications.update")
+async def update_medicacao(
     paciente_id: str,
     medicacao_id: str,
     update_data: schemas.MedicacaoUpdate,
@@ -701,7 +734,8 @@ def update_medicacao(
     return medicacao_atualizada
 
 @app.delete("/pacientes/{paciente_id}/medicacoes/{medicacao_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Ficha do Paciente"])
-def delete_medicacao(
+@require_permission("medications.delete")
+async def delete_medicacao(
     paciente_id: str,
     medicacao_id: str,
     current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
@@ -713,7 +747,8 @@ def delete_medicacao(
     return
 
 @app.patch("/pacientes/{paciente_id}/checklist-itens/{item_id}", response_model=schemas.ChecklistItemResponse, tags=["Ficha do Paciente"])
-def update_checklist_item(
+@require_permission("checklist.update")
+async def update_checklist_item(
     paciente_id: str,
     item_id: str,
     update_data: schemas.ChecklistItemUpdate,
@@ -727,7 +762,8 @@ def update_checklist_item(
     return item_atualizado
 
 @app.delete("/pacientes/{paciente_id}/checklist-itens/{item_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Ficha do Paciente"])
-def delete_checklist_item(
+@require_permission("checklist.delete")
+async def delete_checklist_item(
     paciente_id: str,
     item_id: str,
     current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
@@ -739,7 +775,8 @@ def delete_checklist_item(
     return
 
 @app.patch("/pacientes/{paciente_id}/orientacoes/{orientacao_id}", response_model=schemas.OrientacaoResponse, tags=["Ficha do Paciente"])
-def update_orientacao(
+@require_permission("guidelines.update")
+async def update_orientacao(
     paciente_id: str,
     orientacao_id: str,
     update_data: schemas.OrientacaoUpdate,
@@ -753,7 +790,8 @@ def update_orientacao(
     return orientacao_atualizada
 
 @app.delete("/pacientes/{paciente_id}/orientacoes/{orientacao_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Ficha do Paciente"])
-def delete_orientacao(
+@require_permission("guidelines.delete")
+async def delete_orientacao(
     paciente_id: str,
     orientacao_id: str,
     current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
@@ -769,7 +807,8 @@ def delete_orientacao(
 # =================================================================================
 
 @app.post("/pacientes/{paciente_id}/diario", response_model=schemas.DiarioTecnicoResponse, status_code=status.HTTP_201_CREATED, tags=["Diário do Técnico"])
-def criar_registro_diario(
+@require_permission("diary.create")
+async def criar_registro_diario(
     paciente_id: str,
     registro_data: schemas.DiarioTecnicoCreate,
     tecnico: schemas.UsuarioProfile = Depends(get_current_profissional_user),
@@ -778,16 +817,17 @@ def criar_registro_diario(
     """(Técnico) Adiciona um novo registro de acompanhamento ao diário do paciente."""
     if registro_data.negocio_id not in tecnico.roles or tecnico.roles.get(registro_data.negocio_id) != 'tecnico':
         raise HTTPException(status_code=403, detail="Acesso negado: você não é um técnico deste negócio.")
-    
+
     leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, tecnico.id, date.today())
     if not leitura_confirmada_status.get("leitura_confirmada"):
         raise HTTPException(status_code=403, detail="Leitura do Plano Ativo pendente para hoje.")
-    
+
     registro_data.paciente_id = paciente_id
     return crud.criar_registro_diario(db, registro_data, tecnico)
 
 @app.get("/pacientes/{paciente_id}/diario", response_model=List[schemas.DiarioTecnicoResponse], tags=["Diário do Técnico"])
-def listar_registros_diario(
+@require_permission("diary.view")
+async def listar_registros_diario(
     paciente_id: str,
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
     db: firestore.client = Depends(get_db)
@@ -796,7 +836,8 @@ def listar_registros_diario(
     return crud.listar_registros_diario(db, paciente_id)
 
 @app.patch("/pacientes/{paciente_id}/diario/{registro_id}", response_model=schemas.DiarioTecnicoResponse, tags=["Diário do Técnico"])
-def update_registro_diario(
+@require_permission("diary.update")
+async def update_registro_diario(
     paciente_id: str,
     registro_id: str,
     update_data: schemas.DiarioTecnicoUpdate,
@@ -807,7 +848,7 @@ def update_registro_diario(
     leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, tecnico.id, date.today())
     if not leitura_confirmada_status.get("leitura_confirmada"):
         raise HTTPException(status_code=403, detail="Leitura do Plano Ativo pendente para hoje.")
-    
+
     try:
         registro_atualizado = crud.update_registro_diario(db, paciente_id, registro_id, update_data, tecnico.id)
         if not registro_atualizado:
@@ -820,7 +861,8 @@ def update_registro_diario(
         raise HTTPException(status_code=500, detail="Ocorreu um erro interno.")
 
 @app.delete("/pacientes/{paciente_id}/diario/{registro_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Diário do Técnico"])
-def delete_registro_diario(
+@require_permission("diary.delete")
+async def delete_registro_diario(
     paciente_id: str,
     registro_id: str,
     tecnico: schemas.UsuarioProfile = Depends(get_current_profissional_user),
@@ -2237,7 +2279,8 @@ def update_checklist_item_diario(
 # =================================================================================
 
 @app.post("/pacientes/{paciente_id}/anamnese", response_model=schemas.AnamneseResponse, status_code=status.HTTP_201_CREATED, tags=["Anamnese"])
-def criar_anamnese(
+@require_permission("anamnesis.create")
+async def criar_anamnese(
     paciente_id: str,
     anamnese_data: schemas.AnamneseCreate,
     current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
@@ -2247,7 +2290,8 @@ def criar_anamnese(
     return crud.criar_anamnese(db, paciente_id, anamnese_data)
 
 @app.get("/pacientes/{paciente_id}/anamnese", response_model=List[schemas.AnamneseResponse], tags=["Anamnese"])
-def listar_anamneses(
+@require_permission("anamnesis.view")
+async def listar_anamneses(
     paciente_id: str,
     # ***** A CORREÇÃO ESTÁ AQUI *****
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado_anamnese),
@@ -2257,7 +2301,8 @@ def listar_anamneses(
     return crud.listar_anamneses_por_paciente(db, paciente_id)
 
 @app.put("/anamnese/{anamnese_id}", response_model=schemas.AnamneseResponse, tags=["Anamnese"])
-def atualizar_anamnese(
+@require_permission("anamnesis.update")
+async def atualizar_anamnese(
     anamnese_id: str,
     paciente_id: str = Query(..., description="ID do paciente a quem a anamnese pertence."),
     update_data: schemas.AnamneseUpdate = ...,
@@ -2270,25 +2315,13 @@ def atualizar_anamnese(
         raise HTTPException(status_code=404, detail="Ficha de anamnese não encontrada.")
     return anamnese_atualizada
 
-@app.put("/pacientes/{paciente_id}/endereco", response_model=schemas.UsuarioProfile, tags=["Pacientes"])
-def atualizar_endereco_paciente_endpoint(
-    paciente_id: str,
-    endereco_data: schemas.EnderecoUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
-    db: firestore.client = Depends(get_db)
-):
-    paciente_atualizado = crud.atualizar_endereco_paciente(db, paciente_id, endereco_data)
-    if not paciente_atualizado:
-        raise HTTPException(status_code=404, detail="Paciente não encontrado.")
-    return paciente_atualizado
-
-
 # =================================================================================
-# 2. NOVO ENDPOINT: ENDEREÇO
+# ENDPOINT: ENDEREÇO DO PACIENTE
 # =================================================================================
 
 @app.put("/pacientes/{paciente_id}/endereco", response_model=schemas.UsuarioProfile, tags=["Pacientes"])
-def atualizar_endereco_paciente(
+@require_permission("patients.update")
+async def atualizar_endereco_paciente(
     paciente_id: str,
     endereco_data: schemas.EnderecoUpdate,
     current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
@@ -2301,7 +2334,8 @@ def atualizar_endereco_paciente(
     return paciente_atualizado
 
 @app.put("/pacientes/{paciente_id}/dados-pessoais", response_model=schemas.PacienteProfile, tags=["Pacientes"])
-def atualizar_dados_pessoais_paciente(
+@require_permission("patients.update")
+async def atualizar_dados_pessoais_paciente(
     paciente_id: str,
     dados_pessoais: schemas.PacienteUpdateDadosPessoais,
     current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
@@ -2312,29 +2346,14 @@ def atualizar_dados_pessoais_paciente(
     if not paciente_atualizado:
         raise HTTPException(status_code=404, detail="Paciente não encontrado.")
     return paciente_atualizado
-    
-@app.put("/pacientes/{paciente_id}/endereco", response_model=schemas.UsuarioProfile, tags=["Pacientes"])
-def atualizar_endereco_paciente(
-    paciente_id: str,
-    endereco_data: schemas.EnderecoUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
-    db: firestore.client = Depends(get_db)
-):
-    """
-    (Admin ou Enfermeiro) Adiciona ou atualiza o endereço de um paciente.
-    """
-    paciente_atualizado = crud.atualizar_endereco_paciente(db, paciente_id, endereco_data)
-    if not paciente_atualizado:
-        raise HTTPException(status_code=404, detail="Paciente não encontrado.")
-    return paciente_atualizado
-
 
 # =================================================================================
 # ENDPOINTS DE RELATÓRIOS MÉDICOS
 # =================================================================================
 
 @app.post("/pacientes/{paciente_id}/relatorios", response_model=schemas.RelatorioMedicoResponse, status_code=status.HTTP_201_CREATED, tags=["Relatórios Médicos"])
-def criar_relatorio_medico_endpoint(
+@require_permission("medical_reports.create")
+async def criar_relatorio_medico_endpoint(
     paciente_id: str,
     relatorio_data: schemas.RelatorioMedicoCreate,
     current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
@@ -2351,7 +2370,8 @@ def criar_relatorio_medico_endpoint(
         raise HTTPException(status_code=500, detail="Ocorreu um erro interno no servidor.")
 
 @app.get("/pacientes/{paciente_id}/relatorios", response_model=List[schemas.RelatorioMedicoResponse], tags=["Relatórios Médicos"])
-def listar_relatorios_paciente_endpoint(
+@require_permission("medical_reports.view")
+async def listar_relatorios_paciente_endpoint(
     paciente_id: str,
     negocio_id: str = Depends(validate_negocio_id), # 1. Pega e valida o negocio_id do header
     current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase), # 2. Pega o usuário logado
@@ -2365,18 +2385,12 @@ def listar_relatorios_paciente_endpoint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acesso negado: você não tem permissão de Gestor ou Enfermeiro para esta operação."
         )
-    
+
     # 4. Chama a sua função original do CRUD, que já funciona
     return crud.listar_relatorios_por_paciente(db, paciente_id)
 
-# main.py
-
-# Garanta que estas importações existam no topo do arquivo
-from auth import get_current_user_firebase, validate_negocio_id
-
-# ... (resto do arquivo)
-
 @app.post("/relatorios/{relatorio_id}/fotos", response_model=schemas.RelatorioMedicoResponse, tags=["Relatórios Médicos"])
+@require_permission("medical_reports.upload")
 async def upload_foto_relatorio(
     relatorio_id: str,
     files: List[UploadFile] = File(...),
@@ -3203,7 +3217,8 @@ def get_detalhes_usuario_negocio(
     return usuario
 
 @app.get("/pacientes/{paciente_id}/dados-completos", response_model=schemas.UsuarioProfile, tags=["Ficha do Paciente"])
-def get_dados_completos_paciente(
+@require_permission("patients.view")
+async def get_dados_completos_paciente(
     paciente_id: str,
     current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
     db: firestore.client = Depends(get_db)
@@ -3214,11 +3229,11 @@ def get_dados_completos_paciente(
     paciente = crud.get_usuario_por_id(db, paciente_id)
     if not paciente:
         raise HTTPException(status_code=404, detail="Paciente não encontrado.")
-    
+
     # Garante que todos os campos do schema sejam preenchidos para evitar erros
     paciente.setdefault('fcm_tokens', [])
     paciente.setdefault('apns_tokens', [])
-    
+
     return paciente
 # =================================================================================
 # ENDPOINTS CLOUD TASKS - NOTIFICAÇÕES AGENDADAS
@@ -3447,7 +3462,7 @@ from datetime import datetime as dt
 @app.get("/permissions", tags=["RBAC - Permissões"])
 async def listar_permissoes(
     categoria: Optional[str] = None,
-    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase)
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase)
 ):
     """
     Lista todas as permissões disponíveis no sistema
@@ -3467,7 +3482,7 @@ async def listar_permissoes(
 
 @app.get("/permissions/by-category", tags=["RBAC - Permissões"])
 async def listar_permissoes_por_categoria(
-    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase)
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase)
 ):
     """
     Lista permissões agrupadas por categoria
@@ -3485,7 +3500,7 @@ async def listar_permissoes_por_categoria(
 @app.get("/negocios/{negocio_id}/roles", tags=["RBAC - Roles"])
 async def listar_roles(
     negocio_id: str = Path(..., description="ID do negócio"),
-    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db = Depends(get_db)
 ):
     """
@@ -3524,7 +3539,7 @@ async def listar_roles(
 async def criar_role(
     negocio_id: str = Path(..., description="ID do negócio"),
     role_data: schemas.CreateRoleDto = None,
-    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db = Depends(get_db)
 ):
     """
@@ -3615,7 +3630,7 @@ async def criar_role(
 async def obter_role(
     negocio_id: str = Path(..., description="ID do negócio"),
     role_id: str = Path(..., description="ID do role"),
-    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db = Depends(get_db)
 ):
     """Obtém detalhes de um role específico"""
@@ -3651,7 +3666,7 @@ async def atualizar_role(
     negocio_id: str = Path(..., description="ID do negócio"),
     role_id: str = Path(..., description="ID do role"),
     role_data: schemas.UpdateRoleDto = None,
-    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db = Depends(get_db)
 ):
     """
@@ -3682,9 +3697,9 @@ async def atualizar_role(
         if existing_role.get("negocio_id") != negocio_id:
             raise HTTPException(status_code=403, detail="Role não pertence a este negócio")
 
-        # Verificar se é role do sistema
+        # Não permitir editar roles do sistema
         if existing_role.get("is_system", False):
-            raise HTTPException(status_code=403, detail="Não é possível editar roles do sistema")
+            raise HTTPException(status_code=403, detail="Não é possível editar perfis do sistema")
 
         # Validar permissões se fornecidas
         if role_data.permissions is not None:
@@ -3725,7 +3740,7 @@ async def atualizar_role(
 async def excluir_role(
     negocio_id: str = Path(..., description="ID do negócio"),
     role_id: str = Path(..., description="ID do role"),
-    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db = Depends(get_db)
 ):
     """
@@ -3758,9 +3773,9 @@ async def excluir_role(
         if existing_role.get("negocio_id") != negocio_id:
             raise HTTPException(status_code=403, detail="Role não pertence a este negócio")
 
-        # Verificar se é role do sistema
+        # Não permitir deletar roles do sistema
         if existing_role.get("is_system", False):
-            raise HTTPException(status_code=403, detail="Não é possível excluir roles do sistema")
+            raise HTTPException(status_code=403, detail="Não é possível excluir perfis do sistema")
 
         # Verificar se há usuários usando este role
         users_with_role = db.collection("usuarios")\
@@ -3795,7 +3810,7 @@ async def excluir_role(
 async def listar_permissoes_usuario(
     negocio_id: str = Path(..., description="ID do negócio"),
     usuario_id: str = Path(..., description="ID do usuário"),
-    current_user: schemas.UsuarioProfile = Depends(auth.get_current_user_firebase),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db = Depends(get_db)
 ):
     """
@@ -3863,3 +3878,296 @@ async def listar_permissoes_usuario(
     except Exception as e:
         logger.error(f"Erro ao listar permissões: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao listar permissões: {str(e)}")
+
+
+# ================================================
+# SUPER ADMIN FUNCTIONS E ENDPOINTS
+# ================================================
+
+def is_super_admin(user: dict) -> bool:
+    """Verifica se usuário é super admin (platform)"""
+    roles = user.get("roles", {})
+    return "platform" in roles.values()
+
+
+def log_super_admin_access(
+    admin_user_id: str,
+    admin_email: str,
+    action: str,
+    negocio_id: str,
+    justificativa: str,
+    resource_id: str = None,
+    request: Request = None
+):
+    """Registra acesso do super admin em logs imutáveis"""
+    try:
+        log_data = {
+            "admin_user_id": admin_user_id,
+            "admin_email": admin_email,
+            "action": action,
+            "negocio_id": negocio_id,
+            "resource_id": resource_id,
+            "justificativa": justificativa,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+            "ip_address": request.client.host if request else None,
+            "user_agent": request.headers.get("user-agent") if request else None,
+        }
+
+        # Salvar em collection separada (append-only, nunca deletar)
+        db.collection("super_admin_logs").add(log_data)
+
+        logger.info(f"🔒 Super Admin Log: {admin_email} → {action} em {negocio_id}")
+
+    except Exception as e:
+        logger.error(f"Erro ao registrar log super admin: {e}")
+
+
+@app.get("/super-admin/negocios", tags=["Super Admin"])
+async def super_admin_listar_negocios(
+    current_user: dict = Depends(get_current_user_firebase),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """
+    Lista todos os negócios (apenas Super Admin)
+    """
+    if not is_super_admin(current_user):
+        raise HTTPException(403, "Acesso negado. Apenas Super Admin.")
+
+    try:
+        negocios_ref = db.collection("negocios")\
+            .order_by("nome")\
+            .limit(limit)\
+            .offset(offset)
+
+        negocios_docs = negocios_ref.stream()
+
+        negocios = []
+        for doc in negocios_docs:
+            negocio_data = doc.to_dict()
+            negocio_data["id"] = doc.id
+
+            # Contar usuários
+            users_count_query = db.collection("usuarios")\
+                .where(f"roles.{doc.id}", "!=", None)\
+                .count()
+
+            users_count = users_count_query.get()
+            negocio_data["usuarios_count"] = users_count[0][0].value
+
+            # Contar pacientes
+            patients_count_query = db.collection("pacientes")\
+                .where("negocio_id", "==", doc.id)\
+                .count()
+
+            patients_count = patients_count_query.get()
+            negocio_data["pacientes_count"] = patients_count[0][0].value
+
+            negocios.append(negocio_data)
+
+        return {
+            "negocios": negocios,
+            "total": len(negocios),
+            "limit": limit,
+            "offset": offset
+        }
+
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao listar negócios: {str(e)}")
+
+
+@app.post("/super-admin/access-request", tags=["Super Admin"])
+async def super_admin_request_access(
+    access_request: schemas.SuperAdminAccessRequest,
+    request: Request,
+    current_user: dict = Depends(get_current_user_firebase),
+):
+    """
+    Registra solicitação de acesso a dados sensíveis
+    Requer justificativa detalhada
+    """
+    if not is_super_admin(current_user):
+        raise HTTPException(403, "Acesso negado. Apenas Super Admin.")
+
+    try:
+        # Registrar log
+        log_super_admin_access(
+            admin_user_id=current_user["uid"],
+            admin_email=current_user["email"],
+            action=access_request.action,
+            negocio_id=access_request.negocio_id,
+            justificativa=access_request.justificativa,
+            request=request
+        )
+
+        return {
+            "message": "Acesso registrado com sucesso",
+            "timestamp": firestore.SERVER_TIMESTAMP
+        }
+
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao registrar acesso: {str(e)}")
+
+
+@app.get("/super-admin/audit-logs", tags=["Super Admin"])
+async def super_admin_get_audit_logs(
+    current_user: dict = Depends(get_current_user_firebase),
+    negocio_id: Optional[str] = None,
+    admin_email: Optional[str] = None,
+    limit: int = 100,
+):
+    """
+    Busca logs de auditoria do Super Admin
+    Pode filtrar por negócio ou email do admin
+    """
+    if not is_super_admin(current_user):
+        raise HTTPException(403, "Acesso negado. Apenas Super Admin.")
+
+    try:
+        query = db.collection("super_admin_logs").order_by("timestamp", direction=firestore.Query.DESCENDING)
+
+        if negocio_id:
+            query = query.where("negocio_id", "==", negocio_id)
+
+        if admin_email:
+            query = query.where("admin_email", "==", admin_email)
+
+        query = query.limit(limit)
+
+        logs_docs = query.stream()
+
+        logs = []
+        for doc in logs_docs:
+            log_data = doc.to_dict()
+            log_data["id"] = doc.id
+            logs.append(log_data)
+
+        return {
+            "logs": logs,
+            "total": len(logs)
+        }
+
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao buscar logs: {str(e)}")
+
+
+@app.get("/super-admin/negocios/{negocio_id}/terminology", tags=["Super Admin"])
+async def super_admin_get_terminology(
+    negocio_id: str,
+    current_user: dict = Depends(get_current_user_firebase),
+):
+    """Obtém terminologia customizada de uma empresa"""
+    if not is_super_admin(current_user):
+        raise HTTPException(403, "Acesso negado. Apenas Super Admin.")
+
+    try:
+        negocio_doc = db.collection("negocios").document(negocio_id).get()
+
+        if not negocio_doc.exists:
+            raise HTTPException(404, "Negócio não encontrado")
+
+        negocio_data = negocio_doc.to_dict()
+        terminology = negocio_data.get("terminologia", {})
+
+        # Retornar com valores padrão se não existir
+        default_terminology = schemas.CustomTerminology().model_dump()
+        return {**default_terminology, **terminology}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao buscar terminologia: {str(e)}")
+
+
+@app.put("/super-admin/negocios/{negocio_id}/terminology", tags=["Super Admin"])
+async def super_admin_update_terminology(
+    negocio_id: str,
+    terminology: schemas.CustomTerminology,
+    request: Request,
+    current_user: dict = Depends(get_current_user_firebase),
+):
+    """
+    Atualiza terminologia customizada de uma empresa
+    Apenas Super Admin pode fazer isso
+    """
+    if not is_super_admin(current_user):
+        raise HTTPException(403, "Acesso negado. Apenas Super Admin.")
+
+    try:
+        negocio_ref = db.collection("negocios").document(negocio_id)
+        negocio_doc = negocio_ref.get()
+
+        if not negocio_doc.exists:
+            raise HTTPException(404, "Negócio não encontrado")
+
+        # Atualizar terminologia
+        negocio_ref.update({
+            "terminologia": terminology.model_dump(),
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+
+        # Registrar log
+        log_super_admin_access(
+            admin_user_id=current_user["uid"],
+            admin_email=current_user["email"],
+            action="update_terminology",
+            negocio_id=negocio_id,
+            justificativa="Customização de terminologia para empresa",
+            request=request
+        )
+
+        return {
+            "message": "Terminologia atualizada com sucesso",
+            "terminology": terminology.model_dump()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao atualizar terminologia: {str(e)}")
+
+
+@app.post("/super-admin/negocios/{negocio_id}/reset-terminology", tags=["Super Admin"])
+async def super_admin_reset_terminology(
+    negocio_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user_firebase),
+):
+    """Reseta terminologia para valores padrão"""
+    if not is_super_admin(current_user):
+        raise HTTPException(403, "Acesso negado. Apenas Super Admin.")
+
+    try:
+        negocio_ref = db.collection("negocios").document(negocio_id)
+        negocio_doc = negocio_ref.get()
+
+        if not negocio_doc.exists:
+            raise HTTPException(404, "Negócio não encontrado")
+
+        # Resetar para valores padrão
+        default_terminology = schemas.CustomTerminology().model_dump()
+
+        negocio_ref.update({
+            "terminologia": default_terminology,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+
+        # Registrar log
+        log_super_admin_access(
+            admin_user_id=current_user["uid"],
+            admin_email=current_user["email"],
+            action="reset_terminology",
+            negocio_id=negocio_id,
+            justificativa="Reset de terminologia para valores padrão",
+            request=request
+        )
+
+        return {
+            "message": "Terminologia resetada com sucesso",
+            "terminology": default_terminology
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao resetar terminologia: {str(e)}")

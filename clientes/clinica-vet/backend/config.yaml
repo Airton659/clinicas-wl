@@ -1,7 +1,0 @@
-client_name: "Clínica Veterinária"
-firebase_project_id: "clinica-vet-firebase"  # Alterar para projeto real
-gcp_project_id: "clinica-vet-firebase"       # Alterar para projeto real
-region: "southamerica-east1"
-service_name: "clinica-vet-backend"
-secret_name: "firebase-admin-credentials"
-allow_unauthenticated: true

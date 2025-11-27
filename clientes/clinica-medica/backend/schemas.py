@@ -1070,3 +1070,41 @@ class UserPermissionsResponse(BaseModel):
     role_id: str
     role_nome: str = Field(..., description="Nome customizado do role")
     permissions: List[Permission] = Field(..., description="Lista completa de permissões do usuário")
+
+
+# =================================================================================
+# SCHEMAS DE SUPER ADMIN
+# =================================================================================
+
+class SuperAdminAccessRequest(BaseModel):
+    """Request para acesso a dados sensíveis"""
+    negocio_id: str = Field(..., description="ID do negócio a acessar")
+    justificativa: str = Field(..., min_length=20, max_length=500, description="Justificativa do acesso")
+    action: str = Field(..., description="Ação a ser realizada")
+
+
+class SuperAdminLog(BaseModel):
+    """Log de acesso do Super Admin"""
+    id: Optional[str] = None
+    admin_user_id: str
+    admin_email: str
+    action: str
+    negocio_id: str
+    resource_id: Optional[str] = None
+    justificativa: str
+    timestamp: datetime
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+
+
+class CustomTerminology(BaseModel):
+    """Terminologia customizada para empresa"""
+    patient: str = Field(default="Paciente", max_length=50)
+    consultation: str = Field(default="Consulta", max_length=50)
+    anamnese: str = Field(default="Anamnese", max_length=50)
+    team: str = Field(default="Equipe", max_length=50)
+    exam: str = Field(default="Exame", max_length=50)
+    medication: str = Field(default="Medicação", max_length=50)
+    guideline: str = Field(default="Orientação", max_length=50)
+    diary: str = Field(default="Diário", max_length=50)
+    medical_report: str = Field(default="Relatório Médico", max_length=50)

@@ -7,6 +7,7 @@ import 'package:analicegrubert/screens/main_layout.dart';
 import 'package:analicegrubert/screens/consentimento_page.dart';
 import 'package:analicegrubert/screens/client_dashboard.dart';
 import 'package:analicegrubert/screens/medico_dashboard_page.dart';
+import 'package:analicegrubert/screens/super_admin_dashboard_page.dart';
 import 'package:analicegrubert/screens/loading_screen.dart';
 import 'package:analicegrubert/services/auth_service.dart';
 import 'package:analicegrubert/services/notification_service.dart';
@@ -134,7 +135,7 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
             if (snapshot.hasData) {
               // Verificar super_admin PRIMEIRO (acesso total como admin, sem notificações)
               if (user.isSuperAdmin) {
-                return const ServerErrorBanner(child: MainLayout());
+                return const ServerErrorBanner(child: SuperAdminDashboardPage());
               }
 
               const negocioId = "rlAB6phw0EBsBFeDyOt6";

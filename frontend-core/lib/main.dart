@@ -7,9 +7,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:analicegrubert/firebase_options.dart';
 import 'package:analicegrubert/core/theme/app_theme.dart';
+import 'package:analicegrubert/config/app_config.dart';
 import 'package:analicegrubert/services/auth_service.dart';
 import 'package:analicegrubert/services/notification_service.dart';
+import 'package:analicegrubert/services/permissions_service.dart';
 import 'package:analicegrubert/providers/notification_provider.dart';
+import 'package:analicegrubert/providers/permissions_provider.dart';
 import 'package:analicegrubert/api/api_service.dart';
 import 'package:analicegrubert/services/cache_manager.dart';
 import 'package:analicegrubert/widgets/url_router_wrapper.dart';
@@ -53,6 +56,17 @@ class MyApp extends StatelessWidget {
         ProxyProvider<AuthService, ApiService>(
           update: (context, authService, previous) =>
               ApiService(authService: authService),
+        ),
+        ProxyProvider<ApiService, PermissionsService>(
+          update: (context, apiService, previous) =>
+              PermissionsService(baseUrl: AppConfig.apiBaseUrl),
+        ),
+        ChangeNotifierProxyProvider<PermissionsService, PermissionsProvider>(
+          create: (context) => PermissionsProvider(
+            PermissionsService(baseUrl: AppConfig.apiBaseUrl),
+          ),
+          update: (context, permissionsService, previous) =>
+              previous ?? PermissionsProvider(permissionsService),
         ),
         ChangeNotifierProxyProvider2<AuthService, ApiService, NotificationProvider>(
           create: (context) => NotificationProvider(

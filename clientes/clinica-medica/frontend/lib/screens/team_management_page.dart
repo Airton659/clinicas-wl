@@ -2,8 +2,13 @@
 
 import 'package:analicegrubert/api/api_service.dart';
 import 'package:analicegrubert/models/usuario.dart';
+import 'package:analicegrubert/models/role.dart';
 import 'package:analicegrubert/utils/display_utils.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/permission_guard.dart';
+import '../providers/permissions_provider.dart';
+import '../services/auth_service.dart';
+import 'roles_management_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -31,6 +36,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
   late Future<List<Usuario>> _usersFuture;
   List<Usuario> _allUsers = [];
   List<Usuario> _filteredUsers = [];
+  List<Role> _availableRoles = [];
   final TextEditingController _searchController = TextEditingController();
   String? _activeRoleFilter;
   String _statusFilter = 'ativo'; // O padrão continua sendo 'ativo'
@@ -41,6 +47,40 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
     _activeRoleFilter = widget.initialRoleFilter;
     _fetchAndCacheUsers();
     _searchController.addListener(_filterUsers);
+    _loadUserPermissions();
+    _loadAvailableRoles();
+  }
+
+  /// Carrega permissões do usuário atual
+  void _loadUserPermissions() {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final permissionsProvider = Provider.of<PermissionsProvider>(context, listen: false);
+    final currentUser = authService.currentUser;
+
+    if (currentUser != null && currentUser.id != null) {
+      const negocioId = "rlAB6phw0EBsBFeDyOt6"; // ID do negócio
+      permissionsProvider.carregarPermissoesUsuario(negocioId, currentUser.id!);
+      print('🔐 Carregando permissões do usuário ${currentUser.email} no negócio $negocioId');
+    }
+  }
+
+  /// Carrega roles disponíveis do sistema RBAC
+  void _loadAvailableRoles() async {
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
+    final permissionsProvider = Provider.of<PermissionsProvider>(context, listen: false);
+
+    try {
+      await permissionsProvider.carregarRoles(negocioId);
+      setState(() {
+        // Filtrar roles: excluir 'admin' e apenas roles ativos
+        _availableRoles = permissionsProvider.negocioRoles
+            .where((role) => role.isActive && role.tipo != 'admin')
+            .toList();
+      });
+      print('📋 Roles carregados: ${_availableRoles.map((r) => r.tipo).toList()}');
+    } catch (e) {
+      print('❌ Erro ao carregar roles: $e');
+    }
   }
 
   void _fetchAndCacheUsers({bool forceRefresh = false}) {
@@ -183,27 +223,35 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
   }
 
   String _getDisplayRoleName(String role) {
-    switch (role) {
-      case 'cliente':
-        return 'Paciente';
-      case 'profissional':
-        return 'Enfermeiro';
-      case 'tecnico':
-        return 'Técnico';
-      case 'medico':
-        return 'Médico';
-      case 'admin':
-        return 'Gestor';
-      default:
-        return 'sem-papel';
+    // Tentar encontrar o role na lista de roles carregados
+    try {
+      final roleObj = _availableRoles.firstWhere((r) => r.tipo == role);
+      return roleObj.nomeCustomizado;
+    } catch (e) {
+      // Fallback para nomes padrão se não encontrar
+      switch (role) {
+        case 'cliente':
+          return 'Paciente';
+        case 'profissional':
+          return 'Enfermeiro';
+        case 'tecnico':
+          return 'Técnico';
+        case 'medico':
+          return 'Médico';
+        case 'admin':
+          return 'Gestor';
+        default:
+          return role;
+      }
     }
   }
 
   Future<void> _showChangeRoleDialog(Usuario user) async {
-    // *** CORREÇÃO APLICADA AQUI ***
     const negocioId = "rlAB6phw0EBsBFeDyOt6";
     String? selectedRole = user.roles?[negocioId] ?? 'cliente';
-    final rolesDisponiveis = ['profissional', 'tecnico', 'medico', 'cliente'];
+
+    // Usar roles dinâmicos do sistema RBAC (excluindo admin)
+    final rolesDisponiveis = _availableRoles.map((r) => r.tipo).toList();
 
     return showDialog<void>(
       context: context,
@@ -240,10 +288,14 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                       await apiService.updateUserRole(user.id!, selectedRole!);
                       if (mounted) {
                         Navigator.of(context).pop();
+                        // Limpar filtro de role para mostrar todos os usuários
+                        setState(() {
+                          _activeRoleFilter = null;
+                        });
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Papel alterado com sucesso!')),
                         );
-                                        _reloadData();
+                        _reloadData();
                       }
                     } catch (e) {
                       if (mounted) {
@@ -722,6 +774,21 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
             ? 'Técnicos sem Supervisor'
             : 'Gestão de Equipe'),
         actions: [
+          PermissionGuard(
+            permission: 'settings.manage_permissions',
+            child: IconButton(
+              icon: const Icon(Icons.admin_panel_settings),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const RolesManagementPage(negocioId: negocioId),
+                  ),
+                );
+              },
+              tooltip: 'Gerenciar Perfis e Permissões',
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _reloadData,
@@ -761,26 +828,14 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                         selected: _activeRoleFilter == null,
                         onSelected: (selected) => _setRoleFilter(null),
                       ),
-                      FilterChip(
-                        label: const Text('Pacientes'),
-                        selected: _activeRoleFilter == 'cliente',
-                        onSelected: (selected) => _setRoleFilter('cliente'),
-                      ),
-                      FilterChip(
-                        label: const Text('Enfermeiros'),
-                        selected: _activeRoleFilter == 'profissional',
-                        onSelected: (selected) => _setRoleFilter('profissional'),
-                      ),
-                      FilterChip(
-                        label: const Text('Técnicos'),
-                        selected: _activeRoleFilter == 'tecnico',
-                        onSelected: (selected) => _setRoleFilter('tecnico'),
-                      ),
-                      FilterChip(
-                        label: const Text('Médicos'),
-                        selected: _activeRoleFilter == 'medico',
-                        onSelected: (selected) => _setRoleFilter('medico'),
-                      ),
+                      // Gerar FilterChips dinamicamente baseado em roles carregados
+                      ..._availableRoles.map((role) {
+                        return FilterChip(
+                          label: Text(role.nomeCustomizado),
+                          selected: _activeRoleFilter == role.tipo,
+                          onSelected: (selected) => _setRoleFilter(role.tipo),
+                        );
+                      }),
                     ],
                   ),
                 ),
@@ -852,44 +907,56 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
 
   LinearGradient _getRoleGradient(String role) {
-    switch (role) {
-      case 'cliente':
-        return const LinearGradient(
-          colors: [Color(0xFF4FC3F7), Color(0xFF29B6F6)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-      case 'profissional':
-        return const LinearGradient(
-          colors: [Color(0xFF66BB6A), Color(0xFF4CAF50)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-      case 'tecnico':
-        return const LinearGradient(
-          colors: [Color(0xFFFFB74D), Color(0xFFFF9800)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-      case 'medico':
-        return const LinearGradient(
-          colors: [Color(0xFF9C27B0), Color(0xFF8E24AA)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-      case 'admin':
-        return const LinearGradient(
-          colors: [Color(0xFFE57373), Color(0xFFEF5350)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-      default:
-        return const LinearGradient(
-          colors: [Color(0xFFBDBDBD), Color(0xFF9E9E9E)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
+    // Tratamento especial para roles do sistema
+    if (role == 'admin') {
+      return const LinearGradient(
+        colors: [Color(0xFFE57373), Color(0xFFD32F2F)], // Vermelho
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
     }
+
+    if (role == 'cliente') {
+      return const LinearGradient(
+        colors: [Color(0xFF64B5F6), Color(0xFF1976D2)], // Azul
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+    }
+
+    // Para roles customizadas, busca no cache
+    final customRole = _availableRoles.firstWhere(
+      (r) => r.tipo == role,
+      orElse: () => Role(
+        negocioId: 'rlAB6phw0EBsBFeDyOt6',
+        tipo: role,
+        nivelHierarquico: 50,
+        nomeCustomizado: role,
+        cor: '#9E9E9E',
+        icone: 'person',
+        permissions: [],
+        isActive: true,
+      ),
+    );
+
+    // Converte a cor hex para Color
+    final colorHex = customRole.cor ?? '#9E9E9E';
+    final colorValue = int.parse(colorHex.replaceFirst('#', '0xFF'));
+    final baseColor = Color(colorValue);
+
+    // Cria um gradiente com a cor base (mais clara) e uma versão mais escura
+    final darkerColor = Color.fromARGB(
+      255,
+      (baseColor.red * 0.8).round(),
+      (baseColor.green * 0.8).round(),
+      (baseColor.blue * 0.8).round(),
+    );
+
+    return LinearGradient(
+      colors: [baseColor, darkerColor],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
   }
 
   String _getUserInitials(Usuario user) {
@@ -901,19 +968,65 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
   }
 
   IconData _getRoleIcon(String role) {
-    switch (role) {
-      case 'cliente':
+    // Tratamento especial para roles do sistema
+    if (role == 'admin') {
+      return Icons.admin_panel_settings;
+    }
+
+    if (role == 'cliente') {
+      return Icons.person;
+    }
+
+    // Para roles customizadas, busca no cache
+    final customRole = _availableRoles.firstWhere(
+      (r) => r.tipo == role,
+      orElse: () => Role(
+        negocioId: 'rlAB6phw0EBsBFeDyOt6',
+        tipo: role,
+        nivelHierarquico: 50,
+        nomeCustomizado: role,
+        cor: '#9E9E9E',
+        icone: 'person',
+        permissions: [],
+        isActive: true,
+      ),
+    );
+
+    // Mapeia o nome do ícone para o IconData correspondente
+    final iconName = customRole.icone ?? 'person';
+    switch (iconName) {
+      case 'person':
         return Icons.person_outline;
-      case 'profissional':
+      case 'health_and_safety':
         return Icons.health_and_safety_outlined;
-      case 'tecnico':
+      case 'medical_services':
         return Icons.medical_services_outlined;
-      case 'medico':
+      case 'medical_information':
         return Icons.medical_information_outlined;
-      case 'admin':
+      case 'admin_panel_settings':
         return Icons.admin_panel_settings_outlined;
+      case 'groups':
+        return Icons.groups_outlined;
+      case 'local_hospital':
+        return Icons.local_hospital_outlined;
+      case 'healing':
+        return Icons.healing_outlined;
+      case 'volunteer_activism':
+        return Icons.volunteer_activism_outlined;
+      case 'favorite':
+        return Icons.favorite_outline;
+      case 'psychology':
+        return Icons.psychology_outlined;
+      case 'elderly':
+        return Icons.elderly_outlined;
+      case 'accessible':
+        return Icons.accessible_outlined;
+      case 'support':
+        return Icons.support_outlined;
+      case 'people':
+        return Icons.people_outline;
       default:
-        return Icons.help_outline;
+        return Icons.person_outline;
     }
   }
 

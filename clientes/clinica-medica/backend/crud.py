@@ -194,7 +194,13 @@ def criar_ou_atualizar_usuario(db: firestore.client, user_data: schemas.UsuarioS
         if user_existente:
             logger.info(f"🔍 SYNC DEBUG - ID do usuário existente: {user_existente.get('id')}")
             logger.info(f"🔍 SYNC DEBUG - Roles atuais: {user_existente.get('roles', {})}")
-        
+
+            # CRITICAL: Verificar se é Super Admin pela role platform
+            current_roles = user_existente.get('roles', {})
+            if current_roles.get('platform') == 'super_admin':
+                logger.info(f"🔒 SYNC DEBUG - Usuário é Super Admin (roles.platform = super_admin), retornando sem modificações")
+                return user_existente
+
         negocio_doc_ref = db.collection('negocios').document(negocio_id)
         negocio_doc = negocio_doc_ref.get(transaction=transaction)
 
@@ -203,11 +209,11 @@ def criar_ou_atualizar_usuario(db: firestore.client, user_data: schemas.UsuarioS
 
         negocio_data = negocio_doc.to_dict()
         has_admin = negocio_data.get('admin_uid') is not None
-        
+
         role = "cliente"
         if not has_admin and user_data.codigo_convite and user_data.codigo_convite == negocio_data.get('codigo_convite'):
             role = "admin"
-        
+
         if user_existente:
             logger.info(f"✅ SYNC DEBUG - Usuário existe, atualizando roles se necessário")
             user_ref = db.collection('usuarios').document(user_existente['id'])
@@ -887,10 +893,22 @@ def admin_atualizar_role_usuario(db: firestore.client, negocio_id: str, user_id:
     Atualiza a role de um usuário dentro de um negócio específico.
     Cria/desativa o perfil profissional conforme necessário.
     """
-    # --- ALTERAÇÃO AQUI: Adicionando 'medico' à lista de roles válidas ---
-    if novo_role not in ['cliente', 'profissional', 'admin', 'tecnico', 'medico']:
-        raise ValueError("Role inválida. As roles permitidas são 'cliente', 'profissional', 'admin', 'tecnico' e 'medico'.")
-    # --- FIM DA ALTERAÇÃO ---
+    logger.info(f"🔄 ROLE_UPDATE: Tentando atualizar role do usuário {user_id} para '{novo_role}' no negócio {negocio_id}")
+
+    # Validar role contra os roles do sistema RBAC
+    roles_ref = db.collection('roles').where('negocio_id', '==', negocio_id).where('tipo', '==', novo_role).where('is_active', '==', True)
+    roles_docs = list(roles_ref.stream())
+
+    logger.info(f"🔍 ROLE_UPDATE: Encontrados {len(roles_docs)} roles RBAC com tipo '{novo_role}'")
+
+    if not roles_docs:
+        # Fallback: aceitar roles hardcoded antigos para retrocompatibilidade
+        if novo_role not in ['cliente', 'profissional', 'admin', 'tecnico', 'medico']:
+            logger.error(f"❌ ROLE_UPDATE: Role '{novo_role}' inválida. Não encontrada no RBAC nem na lista hardcoded.")
+            raise ValueError(f"Role '{novo_role}' inválida. Nenhum role ativo com este tipo foi encontrado no negócio.")
+        logger.warning(f"⚠️  ROLE_UPDATE: Role '{novo_role}' não encontrada no RBAC, usando role hardcoded (retrocompatibilidade)")
+    else:
+        logger.info(f"✅ ROLE_UPDATE: Role '{novo_role}' validada via RBAC")
 
     user_ref = db.collection('usuarios').document(user_id)
     user_doc = user_ref.get()

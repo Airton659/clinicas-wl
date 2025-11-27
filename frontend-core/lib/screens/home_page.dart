@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../api/api_service.dart';
 import '../models/usuario.dart';
+import '../models/role.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../core/theme/app_theme.dart';
@@ -16,12 +17,15 @@ import '../widgets/simple_offline_indicator.dart';
 import '../widgets/profile_avatar.dart';
 import '../widgets/notification_badge.dart';
 import '../widgets/notification_permission_banner.dart';
+import '../widgets/permission_guard.dart';
+import '../providers/permissions_provider.dart';
 import 'add_patient_page.dart';
 import 'notifications_page.dart';
 import 'patient_details_page.dart';
 import 'patient_list_page.dart';
 import 'team_management_page.dart';
 import 'profile_settings_page.dart';
+import 'super_admin_dashboard_page.dart';
 import '../models/paciente.dart';
 
 class HomePage extends StatefulWidget {
@@ -42,6 +46,7 @@ class _HomePageState extends State<HomePage>
   late Animation<double> _headerFadeAnimation;
   int _rebuildKey = 0;
   bool _isRefreshing = false;
+  Map<String, Role> _rolesCache = {}; // Cache completo dos perfis por tipo
 
   // ADICIONADO: Variável para controlar o "ouvinte" de notificações
   late StreamSubscription<NotificationType?> _notificationSubscription;
@@ -160,7 +165,31 @@ class _HomePageState extends State<HomePage>
     //   }
     // });
 
-    _reloadData();
+    // Carregar nomes dos perfis ANTES de carregar dados se for admin
+    if (userRole == 'admin') {
+      _loadRoleNames().then((_) => _reloadData());
+    } else {
+      _reloadData();
+    }
+  }
+
+  Future<void> _loadRoleNames() async {
+    try {
+      final permissionsProvider = Provider.of<PermissionsProvider>(context, listen: false);
+      await permissionsProvider.carregarRoles("rlAB6phw0EBsBFeDyOt6");
+
+      if (mounted) {
+        setState(() {
+          // Criar mapa tipo -> objeto Role completo
+          for (final role in permissionsProvider.negocioRoles) {
+            _rolesCache[role.tipo] = role;
+          }
+          debugPrint('🔍 _rolesCache carregado: ${_rolesCache.keys.toList()}');
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao carregar perfis: $e');
+    }
   }
 
   void _reloadData({bool forceRefresh = false}) {
@@ -361,6 +390,29 @@ class _HomePageState extends State<HomePage>
             },
           ),
         ),
+        // BOTÃO SUPER ADMIN (visível apenas para role="platform")
+        if (Provider.of<AuthService>(context, listen: false).currentUser?.isSuperAdmin ?? false)
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SuperAdminDashboardPage(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.verified_user, color: Colors.amber),
+              tooltip: 'Super Admin Dashboard',
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.deepPurple.withOpacity(0.3),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
         // BOTÃO PARA CONFIGURAÇÕES DO PERFIL
         Container(
           margin: const EdgeInsets.only(right: 8),
@@ -433,14 +485,29 @@ class _HomePageState extends State<HomePage>
   Widget _buildAdminContent(List<Usuario> allUsers) {
     const negocioId = "rlAB6phw0EBsBFeDyOt6";
 
+    debugPrint('═══════════════════════════════════════════════════════════');
+    debugPrint('🏗️  CONSTRUINDO DASHBOARD ADMIN');
+    debugPrint('═══════════════════════════════════════════════════════════');
+    debugPrint('📊 Total usuários: ${allUsers.length}');
+    debugPrint('🗂️  _rolesCache: ${_rolesCache.keys.toList()}');
+
+    // Sempre mostra pacientes
     final totalPacientes =
         allUsers.where((u) => !u.isSuperAdmin && u.roles?[negocioId] == 'cliente').length;
-    final totalTecnicos =
-        allUsers.where((u) => !u.isSuperAdmin && u.roles?[negocioId] == 'tecnico').length;
-    final totalEnfermeiros =
-        allUsers.where((u) => !u.isSuperAdmin && u.roles?[negocioId] == 'profissional').length;
-    final totalMedicos =
-        allUsers.where((u) => !u.isSuperAdmin && u.roles?[negocioId] == 'medico').length;
+
+    // Contadores dinâmicos baseados nos perfis que existem
+    Map<String, int> roleCount = {};
+
+    // Adiciona contador para 'cliente' (Pacientes)
+    roleCount['cliente'] = totalPacientes;
+
+    // Adiciona contadores para roles customizadas
+    for (var roleType in _rolesCache.keys) {
+      roleCount[roleType] = allUsers.where((u) => !u.isSuperAdmin && u.roles?[negocioId] == roleType).length;
+    }
+
+    debugPrint('📈 roleCount calculado: $roleCount');
+    debugPrint('═══════════════════════════════════════════════════════════');
 
     final pacientesSemEnfermeiro = allUsers
         .where((u) =>
@@ -481,63 +548,7 @@ class _HomePageState extends State<HomePage>
             children: [
               _buildSectionHeader('Visão Geral', Icons.dashboard_rounded),
               const SizedBox(height: 16),
-              _buildStatsGrid([
-                _StatCard(
-                  title: 'Pacientes',
-                  value: totalPacientes.toString(),
-                  icon: Icons.people_rounded,
-                  color: AppTheme.primaryBlue,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const PatientListPage()),
-                  ).then((_) async {
-                    await Future.delayed(const Duration(milliseconds: 100));
-                    if (mounted) {
-                      _reloadData(forceRefresh: true);
-                    }
-                  }),
-                ),
-                _StatCard(
-                  title: 'Enfermeiros',
-                  value: totalEnfermeiros.toString(),
-                  icon: Icons.health_and_safety_rounded,
-                  color: AppTheme.successGreen,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          const TeamManagementPage(initialRoleFilter: 'profissional'),
-                    ),
-                  ),
-                ),
-                _StatCard(
-                  title: 'Técnicos',
-                  value: totalTecnicos.toString(),
-                  icon: Icons.medical_services_rounded,
-                  color: AppTheme.accentTeal,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          const TeamManagementPage(initialRoleFilter: 'tecnico'),
-                    ),
-                  ),
-                ),
-                _StatCard(
-                  title: 'Médicos',
-                  value: totalMedicos.toString(),
-                  icon: Icons.medical_information_rounded,
-                  color: const Color(0xFF9C27B0),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          const TeamManagementPage(initialRoleFilter: 'medico'),
-                    ),
-                  ),
-                ),
-              ]),
+              _buildStatsGrid(_buildDynamicRoleCards(roleCount, totalPacientes)),
               const SizedBox(height: 32),
               _buildSectionHeader(
                   'Alertas e Pendências', Icons.warning_amber_rounded),
@@ -815,6 +826,120 @@ class _HomePageState extends State<HomePage>
         ),
       ],
     );
+  }
+
+  IconData _getIconFromString(String? iconeName) {
+    debugPrint('🎨 Convertendo ícone: "$iconeName"');
+
+    // Mapa completo de ícones
+    final iconMap = {
+      'person': Icons.person,
+      'person_outline': Icons.person_outline,
+      'account_circle': Icons.account_circle,
+      'face': Icons.face,
+      'medical_services': Icons.medical_services,
+      'local_hospital': Icons.local_hospital,
+      'health_and_safety': Icons.health_and_safety,
+      'science': Icons.science,
+      'medication': Icons.medication,
+      'vaccines': Icons.vaccines,
+      'favorite': Icons.favorite,
+      'healing': Icons.healing,
+      'monitor_heart': Icons.monitor_heart,
+      'psychology': Icons.psychology,
+      'sports_martial_arts': Icons.sports_martial_arts,
+      'accessibility_new': Icons.accessibility_new,
+      'elderly': Icons.elderly,
+      'people_alt': Icons.people_alt,
+      'groups': Icons.groups,
+      'supervisor_account': Icons.supervisor_account,
+      'business_center': Icons.business_center,
+      'badge': Icons.badge,
+      'work': Icons.work,
+      'engineering': Icons.engineering,
+      'construction': Icons.construction,
+      'agriculture': Icons.agriculture,
+      'handyman': Icons.handyman,
+      'build': Icons.build,
+      'medical_information': Icons.medical_information,
+      'assignment': Icons.assignment,
+      'assignment_ind': Icons.assignment_ind,
+      'verified_user': Icons.verified_user,
+      'security': Icons.security,
+      'shield': Icons.shield,
+      'admin_panel_settings': Icons.admin_panel_settings,
+      'manage_accounts': Icons.manage_accounts,
+    };
+
+    final result = iconMap[iconeName] ?? Icons.people_alt_rounded;
+    debugPrint('   → Resultado: ${result == Icons.people_alt_rounded ? "DEFAULT (not found)" : "FOUND"}');
+
+    return result;
+  }
+
+  Color _getColorFromHex(String? hexColor) {
+    if (hexColor == null || hexColor.isEmpty) {
+      return AppTheme.primaryBlue;
+    }
+
+    try {
+      final hex = hexColor.replaceAll('#', '');
+      return Color(int.parse('FF$hex', radix: 16));
+    } catch (e) {
+      return AppTheme.primaryBlue;
+    }
+  }
+
+  List<_StatCard> _buildDynamicRoleCards(Map<String, int> roleCount, int totalPacientes) {
+    List<_StatCard> cards = [];
+
+    for (var entry in roleCount.entries) {
+      final roleType = entry.key;
+      final count = entry.value;
+
+      // Pular admin (é perfil do sistema)
+      if (roleType == 'admin') continue;
+
+      // Tratamento especial para 'cliente' (Pacientes)
+      if (roleType == 'cliente') {
+        cards.add(_StatCard(
+          title: 'Pacientes',
+          value: count.toString(),
+          icon: Icons.person,
+          color: const Color(0xFF1976D2), // Azul
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => TeamManagementPage(initialRoleFilter: 'cliente'),
+            ),
+          ),
+        ));
+        continue;
+      }
+
+      // Buscar dados do perfil no cache
+      final role = _rolesCache[roleType];
+
+      if (role != null) {
+        // Criar card com dados do perfil
+        cards.add(_StatCard(
+          title: role.nomeCustomizado,
+          value: count.toString(),
+          icon: _getIconFromString(role.icone),
+          color: _getColorFromHex(role.cor),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => TeamManagementPage(initialRoleFilter: roleType),
+            ),
+          ),
+        ));
+      }
+    }
+
+    debugPrint('🃏 Cards criados: ${cards.length} (roleCount: $roleCount)');
+
+    return cards;
   }
 
   Widget _buildStatsGrid(List<_StatCard> stats) {
@@ -1387,8 +1512,9 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget? _buildFloatingActionButton() {
-    if (userRole == 'profissional') {
-      return Container(
+    return PermissionGuard(
+      permission: 'patients.create',
+      child: Container(
         decoration: BoxDecoration(
           gradient: AppTheme.primaryGradient,
           borderRadius: BorderRadius.circular(16),
@@ -1420,9 +1546,8 @@ class _HomePageState extends State<HomePage>
             ),
           ),
         ),
-      );
-    }
-    return null;
+      ),
+    );
   }
 }
 

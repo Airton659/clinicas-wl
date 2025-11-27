@@ -87,4 +87,11 @@ fi
     --allow-unauthenticated \
     --set-env-vars="$ENV_VARS"
 
+# Garantir que o tráfego está indo para a última revisão
+echo "🔄 Migrando tráfego para a última revisão..."
+/opt/homebrew/bin/gcloud run services update-traffic "$SERVICE_NAME" \
+    --to-latest \
+    --region="$REGION" \
+    --project="$GCP_PROJECT"
+
 echo "✅ Backend de $CLIENTE deployado com sucesso!"
