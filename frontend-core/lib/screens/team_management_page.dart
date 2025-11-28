@@ -1026,11 +1026,13 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                     // Informações de vínculos
                     if (userRole == 'cliente' && !isInactive) ...[
                       const SizedBox(height: 8),
-                      _buildCardNurseInfo(user),
-                      const SizedBox(height: 4),
-                      _buildCardDoctorInfo(user),
-                      const SizedBox(height: 4),
-                      _buildCardTechniciansInfo(user),
+                      // Associações Dinâmicas
+                      ..._availableRoles.map((role) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: _buildDynamicRoleInfo(user, role),
+                        );
+                      }),
                       const SizedBox(height: 8),
                     ] else ...[
                       const SizedBox(height: 12),
@@ -1056,106 +1058,64 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
     );
   }
 
-  Widget _buildCardNurseInfo(Usuario patient) {
-    String nurseName = 'Sem enfermeiro';
-    if (patient.enfermeiroId != null && patient.enfermeiroId!.isNotEmpty) {
-      final nurse = _allUsers.firstWhere(
-        (u) => u.profissional_id == patient.enfermeiroId,
-        orElse: () => const Usuario(firebaseUid: '', id: null, email: null),
-      );
-      if (nurse.email != null) {
-        nurseName =
-            DisplayUtils.getUserDisplayName(nurse, fallback: 'Enfermeiro');
+  Widget _buildDynamicRoleInfo(Usuario patient, Role role) {
+    // Busca profissionais associados dinamicamente
+    final associatedIds = patient.getAssociatedProfessionals(role.id!);
+    String displayText;
+
+    // Fallback para campos legados se não houver associação dinâmica
+    // Isso garante compatibilidade durante a migração
+    List<String> effectiveIds = List.from(associatedIds);
+    if (effectiveIds.isEmpty) {
+      if (role.tipo == 'enfermeiro' &&
+          patient.enfermeiroId != null &&
+          patient.enfermeiroId!.isNotEmpty) {
+        effectiveIds.add(patient.enfermeiroId!);
+      } else if (role.tipo == 'medico' &&
+          patient.medicoId != null &&
+          patient.medicoId!.isNotEmpty) {
+        effectiveIds.add(patient.medicoId!);
+      } else if (role.tipo == 'tecnico' &&
+          patient.tecnicosIds != null &&
+          patient.tecnicosIds!.isNotEmpty) {
+        effectiveIds.addAll(patient.tecnicosIds!);
       }
     }
 
-    return Row(
-      children: [
-        Icon(Icons.health_and_safety_outlined,
-            size: 16, color: Colors.green[700]),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            nurseName,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
-            ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCardDoctorInfo(Usuario patient) {
-    String doctorName = 'Sem médico';
-    if (patient.medicoId != null && patient.medicoId!.isNotEmpty) {
-      final doctor = _allUsers.firstWhere(
-        (u) => u.id == patient.medicoId,
-        orElse: () => const Usuario(firebaseUid: '', id: null, email: null),
-      );
-      if (doctor.email != null) {
-        doctorName =
-            DisplayUtils.getUserDisplayName(doctor, fallback: 'Médico');
-      }
-    }
-
-    return Row(
-      children: [
-        Icon(Icons.medical_information_outlined,
-            size: 16, color: Colors.purple[700]),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            doctorName,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
-            ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCardTechniciansInfo(Usuario patient) {
-    final technicianIds = patient.tecnicosIds ?? [];
-    String techniciansText;
-
-    if (technicianIds.isEmpty) {
-      techniciansText = 'Sem técnicos';
+    if (effectiveIds.isEmpty) {
+      displayText = 'Sem ${role.nomeCustomizado}';
     } else {
-      final technicianNames = technicianIds.map((id) {
-        final tech = _allUsers.firstWhere(
-          (u) => u.id == id,
+      final names = effectiveIds.map((id) {
+        // Tenta encontrar o usuário na lista carregada
+        // Se não encontrar, tenta buscar pelo ID profissional (caso legado do enfermeiro)
+        final user = _allUsers.firstWhere(
+          (u) => u.id == id || u.profissional_id == id,
           orElse: () =>
               const Usuario(firebaseUid: '', id: null, email: 'Desconhecido'),
         );
-        return DisplayUtils.getUserDisplayName(tech, fallback: 'Técnico');
+        return DisplayUtils.getUserDisplayName(user, fallback: 'Profissional');
       }).toList();
 
-      if (technicianNames.length == 1) {
-        techniciansText = 'Téc: ${technicianNames.first}';
+      if (names.length == 1) {
+        displayText = names.first;
       } else {
-        final firstTech = technicianNames.first;
-        techniciansText = 'Téc: $firstTech +${technicianNames.length - 1}';
+        displayText = '${names.length} ${role.nomeCustomizado}s';
       }
     }
 
+    final roleColor = _getColorFromHex(role.cor);
+
     return Row(
       children: [
-        Icon(Icons.medical_services_outlined,
-            size: 16, color: Colors.orange[700]),
+        Icon(
+          _getIconFromString(role.icone),
+          size: 16,
+          color: roleColor,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            techniciansText,
+            displayText,
             style: TextStyle(
               fontSize: 12,
               color: Colors.grey[700],
