@@ -72,9 +72,10 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
     try {
       await permissionsProvider.carregarRoles(negocioId);
       setState(() {
-        // Filtrar roles: excluir 'admin' e apenas roles ativos
+        // Filtrar roles: excluir apenas 'admin'
+        // NÃO filtrar por isActive - usuários podem ter roles inativas
         _availableRoles = permissionsProvider.negocioRoles
-            .where((role) => role.isActive && role.tipo != 'admin')
+            .where((role) => role.tipo != 'admin')
             .toList();
       });
       print('📋 Roles carregados: ${_availableRoles.map((r) => r.tipo).toList()}');

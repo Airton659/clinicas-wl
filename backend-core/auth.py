@@ -708,3 +708,110 @@ def invalidate_permissions_cache(user_id: str = None):
         # Invalidar tudo
         _permissions_cache = {}
         print(f"🔄 Cache de permissões totalmente invalidado")
+
+
+def get_patient_authorized_with_permission(permission: str):
+    """
+    Dependency para endpoints que precisam validar:
+    1. Permissão RBAC do usuário
+    2. Vínculo com o paciente específico
+
+    IMPORTANTE: Esta função SUBSTITUI get_paciente_autorizado usando RBAC
+
+    Uso:
+        @app.get("/pacientes/{paciente_id}/dados")
+        async def get_dados(
+            paciente_id: str,
+            current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("patients.read")),
+            negocio_id: str = ...,
+            db = Depends(get_db)
+        ):
+            ...
+
+    Args:
+        permission: ID da permissão necessária (ex: "patients.read", "diary.read")
+
+    Returns:
+        Dependency function que valida permissão + vínculo
+    """
+    def dependency(
+        paciente_id: str = Path(..., description="ID do paciente"),
+        negocio_id: str = None,  # Será extraído do paciente
+        current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+        db = Depends(get_db)
+    ) -> schemas.UsuarioProfile:
+        """Valida permissão RBAC E vínculo com paciente"""
+
+        # 0. Super Admin tem acesso total
+        if current_user.roles.get("platform") in ["super_admin", "platform", "admin"]:
+            return current_user
+
+        # 1. O próprio paciente sempre tem acesso
+        if current_user.id == paciente_id:
+            return current_user
+
+        # Buscar dados do paciente para obter negocio_id e vínculos
+        paciente_doc = db.collection('usuarios').document(paciente_id).get()
+        if not paciente_doc.exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Paciente não encontrado"
+            )
+
+        paciente_data = paciente_doc.to_dict()
+
+        # Extrair negocio_id do paciente
+        paciente_negocio_id = list(paciente_data.get('roles', {}).keys())[0] if paciente_data.get('roles') else None
+        if not paciente_negocio_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Paciente não está associado a nenhum negócio"
+            )
+
+        # 2. Verificar PERMISSÃO RBAC
+        if not check_permission(current_user, permission, paciente_negocio_id, db):
+            user_email = getattr(current_user, 'email', 'unknown')
+            print(f"❌ Permissão negada: {user_email} → {permission} (paciente: {paciente_id})")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Você não tem permissão para esta ação. Permissão necessária: {permission}"
+            )
+
+        # 3. Verificar VÍNCULO com paciente
+        # Usuário precisa ter vínculo direto com o paciente:
+        # - Enfermeiro vinculado
+        # - Técnico vinculado
+        # - Admin do negócio (tem acesso a todos os pacientes)
+
+        # Verificar se é admin do negócio
+        user_role_id = current_user.roles.get(paciente_negocio_id)
+        if user_role_id:
+            # Buscar role no Firestore para verificar se é admin
+            role_doc = db.collection("roles").document(user_role_id).get()
+            if role_doc.exists:
+                role_data = role_doc.to_dict()
+                # Admin tem tipo "perfil_admin" ou nível hierárquico 1
+                if role_data.get("tipo") == "perfil_admin" or role_data.get("nivel_hierarquico") == 1:
+                    print(f"✅ Acesso permitido: Admin do negócio")
+                    return current_user
+
+        # Verificar vínculo direto: enfermeiro ou técnico
+        enfermeiro_vinculado_id = paciente_data.get('enfermeiro_id')
+        tecnicos_vinculados_ids = paciente_data.get('tecnicos_ids', [])
+
+        if current_user.id == enfermeiro_vinculado_id:
+            print(f"✅ Acesso permitido: Enfermeiro vinculado")
+            return current_user
+
+        if current_user.id in tecnicos_vinculados_ids:
+            print(f"✅ Acesso permitido: Técnico vinculado")
+            return current_user
+
+        # Se chegou aqui: tem permissão mas não tem vínculo
+        print(f"❌ Acesso negado: Permissão OK mas sem vínculo com paciente {paciente_id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você não tem vínculo com este paciente. Entre em contato com o administrador."
+        )
+
+    return dependency

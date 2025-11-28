@@ -169,14 +169,14 @@ def admin_listar_negocios(
 # =================================================================================
 
 @app.get("/negocios/{negocio_id}/usuarios", response_model=List[schemas.UsuarioProfile], tags=["Admin - Gestão do Negócio"])
-@require_permission("team.read")
-async def listar_usuarios_do_negocio(
+def listar_usuarios_do_negocio(
     negocio_id: str = Depends(validate_path_negocio_id),
     status: str = Query('ativo', description="Filtre por status: 'ativo', 'inativo' ou 'all'."),
+    # ***** A CORREÇÃO ESTÁ AQUI *****
     current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
-    """Lista usuários do negócio. Requer permissão team.read."""
+    """(Admin ou Enfermeiro) Lista todos os usuários (clientes, técnicos e profissionais) do negócio."""
     return crud.admin_listar_usuarios_por_negocio(db, negocio_id, status)
 
 @app.get("/negocios/{negocio_id}/clientes", response_model=List[schemas.UsuarioProfile], tags=["Admin - Gestão do Negócio"])
@@ -1063,11 +1063,11 @@ async def listar_tecnicos_supervisionados_por_paciente_endpoint(
 @app.get("/me/profissional", response_model=schemas.ProfissionalResponse, tags=["Profissional - Autogestão"])
 def get_meu_perfil_profissional(
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Retorna o seu próprio perfil profissional."""
-    perfil = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado para este usuário neste negócio.")
     return perfil
@@ -1076,11 +1076,11 @@ def get_meu_perfil_profissional(
 def update_meu_perfil_profissional(
     update_data: schemas.ProfissionalUpdate,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Atualiza o seu próprio perfil profissional."""
-    perfil_atual = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_atual = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_atual:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado para este usuário neste negócio.")
     
@@ -1091,11 +1091,11 @@ def update_meu_perfil_profissional(
 def criar_meu_servico(
     servico_data: schemas.ServicoCreate,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Cria um novo serviço associado ao seu perfil."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
 
@@ -1107,11 +1107,11 @@ def criar_meu_servico(
 @app.get("/me/servicos", response_model=List[schemas.ServicoResponse], tags=["Profissional - Autogestão"])
 def listar_meus_servicos(
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Lista todos os serviços associados ao seu perfil."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
         
@@ -1122,11 +1122,11 @@ def atualizar_meu_servico(
     servico_id: str,
     update_data: schemas.ServicoUpdate,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Atualiza um de seus serviços."""
-    perfil_atual = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_atual = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_atual:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
     
@@ -1140,11 +1140,11 @@ def atualizar_meu_servico(
 def deletar_meu_servico(
     servico_id: str,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Deleta um de seus serviços."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
         
@@ -1157,11 +1157,11 @@ def deletar_meu_servico(
 def definir_meus_horarios(
     horarios: List[schemas.HorarioTrabalho],
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Define sua grade de horários de trabalho semanal."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
 
@@ -1170,11 +1170,11 @@ def definir_meus_horarios(
 @app.get("/me/horarios-trabalho", response_model=List[schemas.HorarioTrabalho], tags=["Profissional - Autogestão"])
 def get_meus_horarios(
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Lista sua grade de horários de trabalho."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
 
@@ -1184,11 +1184,11 @@ def get_meus_horarios(
 def criar_meu_bloqueio(
     bloqueio_data: schemas.Bloqueio,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Cria um bloqueio em sua agenda."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
     
@@ -1198,11 +1198,11 @@ def criar_meu_bloqueio(
 def deletar_meu_bloqueio(
     bloqueio_id: str,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Deleta um bloqueio de sua agenda."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
         
@@ -1246,11 +1246,11 @@ def listar_meus_pacientes(
 def criar_postagem(
     postagem_data: schemas.PostagemCreate,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Cria uma nova postagem no feed do negócio."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado para este usuário neste negócio.")
     
@@ -1300,11 +1300,11 @@ def get_comentarios(
 def deletar_postagem(
     postagem_id: str,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Deleta uma de suas postagens."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
         
@@ -1912,11 +1912,11 @@ def cancelar_agendamento_endpoint(
 @app.get("/me/agendamentos", response_model=List[schemas.AgendamentoResponse], tags=["Profissional - Autogestão"])
 def listar_meus_agendamentos_profissional(
     negocio_id: str = Header(..., description="ID do Negócio no qual o profissional está atuando."),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Lista todos os agendamentos recebidos."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
     
@@ -1926,11 +1926,11 @@ def listar_meus_agendamentos_profissional(
 def cancelar_agendamento_pelo_profissional_endpoint(
     agendamento_id: str,
     negocio_id: str = Header(..., description="ID do Negócio no qual o profissional está atuando."),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Cancela um agendamento que recebeu."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
     
@@ -1944,11 +1944,11 @@ def cancelar_agendamento_pelo_profissional_endpoint(
 def confirmar_agendamento_pelo_profissional_endpoint(
     agendamento_id: str,
     negocio_id: str = Header(..., description="ID do Negócio no qual o profissional está atuando."),
-    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Confirma um agendamento pendente."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
 

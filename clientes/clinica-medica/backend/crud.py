@@ -754,15 +754,22 @@ def admin_listar_negocios(db: firestore.client) -> List[Dict]:
 def admin_listar_usuarios_por_negocio(db: firestore.client, negocio_id: str, status: str = 'ativo') -> List[Dict]:
     """
     Lista todos os usuários de um negócio, com filtro de status.
-    VERSÃO FINAL: Retorna o campo de status corretamente para cada usuário.
+    VERSÃO RBAC: Retorna TODOS os usuários com role nesse negócio, independente do tipo.
     """
     usuarios = []
     try:
-        query = db.collection('usuarios').where(f'roles.{negocio_id}', 'in', ['cliente', 'profissional', 'admin', 'tecnico', 'medico'])
+        # Buscar TODOS os usuários que têm alguma role neste negócio
+        # Usar != None ao invés de 'in' com lista hardcoded
+        all_users = db.collection('usuarios').stream()
 
-        for doc in query.stream():
+        for doc in all_users:
             usuario_data = doc.to_dict()
-            
+
+            # Verificar se o usuário tem uma role neste negócio
+            user_role = usuario_data.get('roles', {}).get(negocio_id)
+            if not user_role:
+                continue  # Usuário não pertence a este negócio
+
             # Pega o status do usuário para o negócio específico, com 'ativo' como padrão.
             status_no_negocio = usuario_data.get('status_por_negocio', {}).get(negocio_id, 'ativo')
             
@@ -811,7 +818,7 @@ def admin_listar_usuarios_por_negocio(db: firestore.client, negocio_id: str, sta
                 usuario_data['status_por_negocio'] = {negocio_id: status_no_negocio}
 
                 # A lógica de enriquecimento de dados continua a mesma...
-                user_role = usuario_data.get("roles", {}).get(negocio_id)
+                # Nota: mantendo enriquecimento apenas para roles antigas conhecidas
                 if user_role in ['profissional', 'admin']:
                     firebase_uid = usuario_data.get('firebase_uid')
                     if firebase_uid:

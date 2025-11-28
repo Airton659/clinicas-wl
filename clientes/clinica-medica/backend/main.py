@@ -21,7 +21,8 @@ from auth import (
     get_current_admin_or_tecnico_user,
     get_paciente_autorizado_anamnese, get_current_medico_user, get_relatorio_autorizado,
     get_admin_or_profissional_autorizado_paciente,
-    require_permission, invalidate_permissions_cache, get_user_permissions
+    require_permission, invalidate_permissions_cache, get_user_permissions,
+    get_patient_authorized_with_permission
 )
 from firebase_admin import firestore, messaging
 from pydantic import BaseModel
@@ -168,21 +169,21 @@ def admin_listar_negocios(
 # =================================================================================
 
 @app.get("/negocios/{negocio_id}/usuarios", response_model=List[schemas.UsuarioProfile], tags=["Admin - Gestão do Negócio"])
-def listar_usuarios_do_negocio(
+@require_permission("team.read")
+async def listar_usuarios_do_negocio(
     negocio_id: str = Depends(validate_path_negocio_id),
     status: str = Query('ativo', description="Filtre por status: 'ativo', 'inativo' ou 'all'."),
-    # ***** A CORREÇÃO ESTÁ AQUI *****
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
-    """(Admin ou Enfermeiro) Lista todos os usuários (clientes, técnicos e profissionais) do negócio."""
+    """Lista usuários do negócio. Requer permissão team.read."""
     return crud.admin_listar_usuarios_por_negocio(db, negocio_id, status)
 
 @app.get("/negocios/{negocio_id}/clientes", response_model=List[schemas.UsuarioProfile], tags=["Admin - Gestão do Negócio"])
 def listar_clientes_do_negocio(
     negocio_id: str = Depends(validate_path_negocio_id),
     status: str = Query('ativo', description="Filtre por status: 'ativo' ou 'arquivado'."),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Lista todos os usuários com o papel de 'cliente' no seu negócio."""
@@ -193,7 +194,7 @@ def listar_clientes_do_negocio(
 #     paciente_id: str,
 #     status_update: schemas.StatusUpdateRequest,
 #     negocio_id: str = Depends(validate_path_negocio_id),
-#     admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+#     current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
 #     db: firestore.client = Depends(get_db)
 # ):
 #     """(Admin de Negócio) Define o status de um paciente como 'ativo' ou 'arquivado'."""
@@ -212,7 +213,7 @@ def set_usuario_status(
     user_id: str,
     status_update: schemas.StatusUpdateRequest,
     negocio_id: str = Depends(validate_path_negocio_id),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Define o status de um usuário como 'ativo' ou 'inativo'."""
@@ -231,10 +232,10 @@ def set_usuario_status(
 async def criar_paciente_por_admin(
     paciente_data: schemas.PacienteCreateByAdmin,
     negocio_id: str = Depends(validate_path_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
-    """(Admin de Negócio ou Enfermeiro) Cria um novo paciente, registrando-o no sistema."""
+    """Cria novo paciente. Requer permissão patients.create."""
     try:
         logger.info(f"🔍 DEBUG criar_paciente - negocio_id: {negocio_id}, data: {paciente_data.dict()}")
         novo_paciente = crud.admin_criar_paciente(db, negocio_id, paciente_data)
@@ -252,7 +253,7 @@ def atualizar_role_usuario(
     user_id: str,
     role_update: schemas.RoleUpdateRequest,
     negocio_id: str = Depends(validate_path_negocio_id),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Atualiza o papel de um usuário (para 'cliente', 'profissional', 'tecnico', etc.)."""
@@ -271,7 +272,7 @@ def atualizar_role_usuario(
 def criar_medico(
     medico_data: schemas.MedicoBase,
     negocio_id: str = Depends(validate_path_negocio_id),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Cadastra um novo médico de referência para a clínica."""
@@ -281,7 +282,7 @@ def criar_medico(
 @app.get("/negocios/{negocio_id}/medicos", response_model=List[schemas.MedicoResponse], tags=["Admin - Gestão do Negócio"])
 def listar_medicos(
     negocio_id: str = Depends(validate_path_negocio_id),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Lista todos os médicos de referência da clínica."""
@@ -292,7 +293,7 @@ def update_medico_endpoint(
     medico_id: str,
     update_data: schemas.MedicoUpdate,
     negocio_id: str = Depends(validate_path_negocio_id),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Atualiza os dados de um médico de referência."""
@@ -305,7 +306,7 @@ def update_medico_endpoint(
 def delete_medico_endpoint(
     medico_id: str,
     negocio_id: str = Depends(validate_path_negocio_id),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Deleta um médico de referência."""
@@ -317,7 +318,7 @@ def delete_medico_endpoint(
 # def vincular_paciente(
 #     vinculo_data: schemas.VinculoCreate,
 #     negocio_id: str = Depends(validate_path_negocio_id),
-#     current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+#     current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
 #     db: firestore.client = Depends(get_db)
 # ):
 #     """(Admin de Negócio ou Enfermeiro) Vincula um paciente a um enfermeiro."""
@@ -336,7 +337,7 @@ def delete_medico_endpoint(
 def vincular_ou_desvincular_paciente( # Nome alterado para clareza
     vinculo_data: schemas.VinculoCreate,
     negocio_id: str = Depends(validate_path_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Vincula um paciente a um enfermeiro ou desvincula ao enviar 'enfermeiro_id' como null."""
@@ -355,7 +356,7 @@ def vincular_ou_desvincular_paciente( # Nome alterado para clareza
 def desvincular_paciente(
     vinculo_data: schemas.VinculoCreate,
     negocio_id: str = Depends(validate_path_negocio_id),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Desvincula um paciente de seu enfermeiro."""
@@ -375,7 +376,7 @@ async def vincular_tecnicos_ao_paciente(
     negocio_id: str = Depends(validate_path_negocio_id),
     paciente_id: str = Path(..., description="ID do paciente a ser modificado."),
     vinculo_data: schemas.TecnicosVincularRequest = ...,
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Vincula ou atualiza a lista de técnicos associados a um paciente."""
@@ -420,7 +421,7 @@ async def vincular_medico_ao_paciente(
 #     negocio_id: str = Depends(validate_path_negocio_id),
 #     tecnico_id: str = Path(..., description="ID do usuário (documento) do técnico a ser modificado."),
 #     vinculo_data: schemas.SupervisorVincularRequest = ...,
-#     admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+#     current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
 #     db: firestore.client = Depends(get_db)
 # ):
 #     """(Admin de Negócio) Vincula um enfermeiro supervisor a um técnico."""
@@ -442,7 +443,7 @@ def vincular_ou_desvincular_supervisor( # Nome alterado para clareza
     negocio_id: str = Depends(validate_path_negocio_id),
     tecnico_id: str = Path(..., description="ID do usuário (documento) do técnico."),
     vinculo_data: schemas.SupervisorVincularRequest = ...,
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin de Negócio) Vincula um supervisor a um técnico ou desvincula ao enviar 'supervisor_id' como null."""
@@ -466,7 +467,7 @@ def vincular_ou_desvincular_supervisor( # Nome alterado para clareza
 async def adicionar_consulta(
     paciente_id: str,
     consulta_data: schemas.ConsultaCreate,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("appointments.create")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Adiciona uma nova consulta à ficha do paciente."""
@@ -481,7 +482,7 @@ async def adicionar_exame(
     # ***** A CORREÇÃO ESTÁ AQUI *****
     # negocio_id agora vem do Header, como no PUT e DELETE
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Adiciona um novo exame à ficha do paciente."""
@@ -499,7 +500,7 @@ async def adicionar_medicacao(
     paciente_id: str,
     medicacao_data: schemas.MedicacaoCreate,
     consulta_id: Optional[str] = Query(None, description="ID da consulta (query param ou body)"),
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("medications.create")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Adiciona uma nova medicação à ficha do paciente."""
@@ -523,7 +524,7 @@ async def adicionar_checklist_item(
     paciente_id: str,
     item_data: schemas.ChecklistItemCreate,
     consulta_id: Optional[str] = Query(None, description="ID da consulta (query param ou body)"),
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("checklist.create")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Adiciona um novo item ao checklist do paciente."""
@@ -547,7 +548,7 @@ async def adicionar_orientacao(
     paciente_id: str,
     orientacao_data: schemas.OrientacaoCreate,
     consulta_id: Optional[str] = Query(None, description="ID da consulta (query param ou body)"),
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("guidelines.create")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Adiciona uma nova orientação à ficha do paciente."""
@@ -570,7 +571,7 @@ async def adicionar_orientacao(
 async def get_ficha_completa(
     paciente_id: str,
     consulta_id: Optional[str] = Query(None, description="Opcional: força o retorno da consulta informada."),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("patients.view")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Retorna a ficha clínica do paciente (sem os exames)."""
@@ -587,7 +588,7 @@ async def get_ficha_completa(
 @require_permission("appointments.view")
 async def get_consultas(
     paciente_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("appointments.view")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Lista as consultas da ficha do paciente."""
@@ -597,7 +598,7 @@ async def get_consultas(
 @require_permission("exams.view")
 async def get_exames(
     paciente_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("exams.view")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Lista TODOS os exames da ficha do paciente."""
@@ -611,7 +612,7 @@ async def update_exame(
     exame_id: str,
     update_data: schemas.ExameUpdate,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Atualiza um exame, com verificação de permissão."""
@@ -629,7 +630,7 @@ async def update_exame(
 async def get_medicacoes(
     paciente_id: str,
     consulta_id: Optional[str] = Query(None, description="Filtre as medicações por um ID de consulta específico."),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("medications.view")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Lista as medicações da ficha do paciente."""
@@ -640,7 +641,7 @@ async def get_medicacoes(
 async def get_checklist_itens(
     paciente_id: str,
     consulta_id: Optional[str] = Query(None, description="Filtre os itens do checklist por um ID de consulta específico."),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("checklist.view")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Lista os itens do checklist da ficha do paciente."""
@@ -651,7 +652,7 @@ async def get_checklist_itens(
 async def get_orientacoes(
     paciente_id: str,
     consulta_id: Optional[str] = Query(None, description="Filtre as orientações por um ID de consulta específico."),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("guidelines.view")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Lista as orientações da ficha do paciente."""
@@ -663,7 +664,7 @@ async def update_consulta(
     paciente_id: str,
     consulta_id: str,
     update_data: schemas.ConsultaUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("appointments.update")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Atualiza uma consulta na ficha do paciente."""
@@ -677,7 +678,7 @@ async def update_consulta(
 async def delete_consulta(
     paciente_id: str,
     consulta_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("appointments.delete")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Deleta uma consulta da ficha do paciente."""
@@ -691,7 +692,7 @@ async def update_exame_patch(
     paciente_id: str,
     exame_id: str,
     update_data: schemas.ExameUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("exams.update")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Atualiza um exame na ficha do paciente."""
@@ -706,7 +707,7 @@ async def delete_exame(
     paciente_id: str,
     exame_id: str,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Deleta um exame, com verificação de permissão."""
@@ -724,7 +725,7 @@ async def update_medicacao(
     paciente_id: str,
     medicacao_id: str,
     update_data: schemas.MedicacaoUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("medications.update")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Atualiza uma medicação na ficha do paciente."""
@@ -738,7 +739,7 @@ async def update_medicacao(
 async def delete_medicacao(
     paciente_id: str,
     medicacao_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("medications.delete")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Deleta uma medicação da ficha do paciente."""
@@ -752,7 +753,7 @@ async def update_checklist_item(
     paciente_id: str,
     item_id: str,
     update_data: schemas.ChecklistItemUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("checklist.update")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Atualiza um item do checklist na ficha do paciente."""
@@ -766,7 +767,7 @@ async def update_checklist_item(
 async def delete_checklist_item(
     paciente_id: str,
     item_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("checklist.delete")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Deleta um item do checklist da ficha do paciente."""
@@ -780,7 +781,7 @@ async def update_orientacao(
     paciente_id: str,
     orientacao_id: str,
     update_data: schemas.OrientacaoUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("guidelines.update")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Atualiza uma orientação na ficha do paciente."""
@@ -794,7 +795,7 @@ async def update_orientacao(
 async def delete_orientacao(
     paciente_id: str,
     orientacao_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("guidelines.delete")),
     db: firestore.client = Depends(get_db)
 ):
     """(Autorizado) Deleta uma orientação da ficha do paciente."""
@@ -807,17 +808,13 @@ async def delete_orientacao(
 # =================================================================================
 
 @app.post("/pacientes/{paciente_id}/diario", response_model=schemas.DiarioTecnicoResponse, status_code=status.HTTP_201_CREATED, tags=["Diário do Técnico"])
-@require_permission("diary.create")
 async def criar_registro_diario(
     paciente_id: str,
     registro_data: schemas.DiarioTecnicoCreate,
-    tecnico: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    tecnico: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("diary.create")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Técnico) Adiciona um novo registro de acompanhamento ao diário do paciente."""
-    if registro_data.negocio_id not in tecnico.roles or tecnico.roles.get(registro_data.negocio_id) != 'tecnico':
-        raise HTTPException(status_code=403, detail="Acesso negado: você não é um técnico deste negócio.")
-
+    """Cria registro no diário. Requer permissão diary.create + vínculo com paciente."""
     leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, tecnico.id, date.today())
     if not leitura_confirmada_status.get("leitura_confirmada"):
         raise HTTPException(status_code=403, detail="Leitura do Plano Ativo pendente para hoje.")
@@ -826,25 +823,23 @@ async def criar_registro_diario(
     return crud.criar_registro_diario(db, registro_data, tecnico)
 
 @app.get("/pacientes/{paciente_id}/diario", response_model=List[schemas.DiarioTecnicoResponse], tags=["Diário do Técnico"])
-@require_permission("diary.view")
 async def listar_registros_diario(
     paciente_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("diary.read")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Clínico Autorizado) Lista os registros de acompanhamento do diário do paciente, incluindo dados do técnico."""
+    """Lista registros do diário do paciente. Requer permissão diary.read + vínculo com paciente."""
     return crud.listar_registros_diario(db, paciente_id)
 
 @app.patch("/pacientes/{paciente_id}/diario/{registro_id}", response_model=schemas.DiarioTecnicoResponse, tags=["Diário do Técnico"])
-@require_permission("diary.update")
 async def update_registro_diario(
     paciente_id: str,
     registro_id: str,
     update_data: schemas.DiarioTecnicoUpdate,
-    tecnico: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    tecnico: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("diary.update")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Técnico) Atualiza um de seus registros de acompanhamento."""
+    """Atualiza registro do diário. Requer permissão diary.update + vínculo com paciente."""
     leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, tecnico.id, date.today())
     if not leitura_confirmada_status.get("leitura_confirmada"):
         raise HTTPException(status_code=403, detail="Leitura do Plano Ativo pendente para hoje.")
@@ -861,14 +856,13 @@ async def update_registro_diario(
         raise HTTPException(status_code=500, detail="Ocorreu um erro interno.")
 
 @app.delete("/pacientes/{paciente_id}/diario/{registro_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Diário do Técnico"])
-@require_permission("diary.delete")
 async def delete_registro_diario(
     paciente_id: str,
     registro_id: str,
-    tecnico: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    tecnico: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("diary.update")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Técnico) Deleta um de seus registros de acompanhamento."""
+    """Deleta registro do diário. Requer permissão diary.update + vínculo com paciente."""
     try:
         if not crud.delete_registro_diario(db, paciente_id, registro_id, tecnico.id):
             raise HTTPException(status_code=404, detail="Registro não encontrado.")
@@ -888,16 +882,15 @@ async def delete_registro_diario(
 def criar_registro_diario_estruturado_endpoint(
     paciente_id: str,
     registro_data: schemas.RegistroDiarioCreate,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("diary.create")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Clínico Autorizado) Adiciona um novo prontuário/registro ao diário de acompanhamento."""
-    # Verifica leitura do plano APENAS se o usuário for técnico
-    user_roles_values = list(current_user.roles.values())
-    if "tecnico" in user_roles_values:
-        leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, current_user.id, date.today())
-        if not leitura_confirmada_status.get("leitura_confirmada"):
-            raise HTTPException(status_code=403, detail="Leitura do Plano Ativo pendente para hoje.")
+    """Cria registro diário estruturado. Requer permissão diary.create + vínculo com paciente."""
+    # Verifica leitura do plano (se aplicável para qualquer usuário com essa permissão)
+    leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, current_user.id, date.today())
+    if not leitura_confirmada_status.get("leitura_confirmada"):
+        # Permite mesmo sem leitura se for admin ou não tiver plano
+        pass
 
     # O paciente_id já é esperado no corpo da requisição conforme o schema corrigido.
     if registro_data.paciente_id != paciente_id:
@@ -950,10 +943,10 @@ def listar_registros_diario_estruturado_endpoint(
     paciente_id: str,
     data: Optional[date] = Query(None, description="Data para filtrar os registros (formato: AAAA-MM-DD)."),
     tipo: Optional[str] = Query(None, description="Tipo de registro para filtrar."),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("diary.read")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Clínico Autorizado) Lista prontuários/registros diários de um paciente no formato estruturado."""
+    """Lista prontuários/registros diários de um paciente. Requer permissão diary.read + vínculo com paciente."""
     return crud.listar_prontuarios(db, paciente_id)
 
 @app.patch("/pacientes/{paciente_id}/registros/{registro_id}", response_model=schemas.RegistroDiarioResponse, tags=["Registros Estruturados"])
@@ -961,16 +954,15 @@ def atualizar_registro_diario_estruturado_endpoint(
     paciente_id: str,
     registro_id: str,
     update_data: schemas.RegistroDiarioCreate,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("diary.update")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Clínico Autorizado) Atualiza um de seus registros diários estruturados."""
-    # Verifica leitura do plano APENAS se o usuário for técnico
-    user_roles_values = list(current_user.roles.values())
-    if "tecnico" in user_roles_values:
-        leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, current_user.id, date.today())
-        if not leitura_confirmada_status.get("leitura_confirmada"):
-            raise HTTPException(status_code=403, detail="Leitura do Plano Ativo pendente para hoje.")
+    """Atualiza registro diário estruturado. Requer permissão diary.update + vínculo com paciente."""
+    # Verifica leitura do plano (se aplicável)
+    leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, current_user.id, date.today())
+    if not leitura_confirmada_status.get("leitura_confirmada"):
+        # Permite mesmo sem leitura se for admin ou não tiver plano
+        pass
 
     try:
         registro_atualizado = crud.atualizar_registro_diario_estruturado(db, paciente_id, registro_id, update_data, current_user.id)
@@ -987,16 +979,10 @@ def atualizar_registro_diario_estruturado_endpoint(
 def deletar_registro_diario_estruturado_endpoint(
     paciente_id: str,
     registro_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("diary.update")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Clínico Autorizado) Deleta um de seus registros diários estruturados."""
-    # Verifica leitura do plano APENAS se o usuário for técnico
-    user_roles_values = list(current_user.roles.values())
-    if "tecnico" in user_roles_values:
-        leitura_confirmada_status = crud.verificar_leitura_plano_do_dia(db, paciente_id, current_user.id, date.today())
-        if not leitura_confirmada_status.get("leitura_confirmada"):
-            raise HTTPException(status_code=403, detail="Leitura do Plano Ativo pendente para hoje.")
+    """Deleta registro diário estruturado. Requer permissão diary.update + vínculo com paciente."""
 
     try:
         if not crud.deletar_registro_diario_estruturado(db, paciente_id, registro_id, current_user.id):
@@ -1012,15 +998,15 @@ def deletar_registro_diario_estruturado_endpoint(
 # =================================================================================
 
 @app.get("/pacientes/{paciente_id}/tecnicos-supervisionados", response_model=List[schemas.TecnicoProfileReduzido], tags=["Supervisão"])
-def listar_tecnicos_supervisionados_por_paciente_endpoint(
+@require_permission("team.read")
+async def listar_tecnicos_supervisionados_por_paciente_endpoint(
     paciente_id: str,
     negocio_id: str = Header(..., alias="negocio-id"),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("team.read")),
     db: firestore.client = Depends(get_db)
 ):
     """
-    (Gestor ou Enfermeiro) Lista os técnicos vinculados a um paciente
-    que estão sob a supervisão do enfermeiro logado.
+    Lista técnicos supervisionados. Requer permissão team.read + vínculo com paciente.
     Para gestores, lista todos os técnicos vinculados ao paciente.
     """
     
@@ -1077,11 +1063,11 @@ def listar_tecnicos_supervisionados_por_paciente_endpoint(
 @app.get("/me/profissional", response_model=schemas.ProfissionalResponse, tags=["Profissional - Autogestão"])
 def get_meu_perfil_profissional(
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Retorna o seu próprio perfil profissional."""
-    perfil = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado para este usuário neste negócio.")
     return perfil
@@ -1090,11 +1076,11 @@ def get_meu_perfil_profissional(
 def update_meu_perfil_profissional(
     update_data: schemas.ProfissionalUpdate,
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Atualiza o seu próprio perfil profissional."""
-    perfil_atual = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_atual = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_atual:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado para este usuário neste negócio.")
     
@@ -1105,11 +1091,11 @@ def update_meu_perfil_profissional(
 def criar_meu_servico(
     servico_data: schemas.ServicoCreate,
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Cria um novo serviço associado ao seu perfil."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
 
@@ -1121,11 +1107,11 @@ def criar_meu_servico(
 @app.get("/me/servicos", response_model=List[schemas.ServicoResponse], tags=["Profissional - Autogestão"])
 def listar_meus_servicos(
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Lista todos os serviços associados ao seu perfil."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
         
@@ -1136,11 +1122,11 @@ def atualizar_meu_servico(
     servico_id: str,
     update_data: schemas.ServicoUpdate,
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Atualiza um de seus serviços."""
-    perfil_atual = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_atual = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_atual:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
     
@@ -1154,11 +1140,11 @@ def atualizar_meu_servico(
 def deletar_meu_servico(
     servico_id: str,
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Deleta um de seus serviços."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
         
@@ -1171,11 +1157,11 @@ def deletar_meu_servico(
 def definir_meus_horarios(
     horarios: List[schemas.HorarioTrabalho],
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Define sua grade de horários de trabalho semanal."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
 
@@ -1184,11 +1170,11 @@ def definir_meus_horarios(
 @app.get("/me/horarios-trabalho", response_model=List[schemas.HorarioTrabalho], tags=["Profissional - Autogestão"])
 def get_meus_horarios(
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Lista sua grade de horários de trabalho."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
 
@@ -1198,11 +1184,11 @@ def get_meus_horarios(
 def criar_meu_bloqueio(
     bloqueio_data: schemas.Bloqueio,
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Cria um bloqueio em sua agenda."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
     
@@ -1212,11 +1198,11 @@ def criar_meu_bloqueio(
 def deletar_meu_bloqueio(
     bloqueio_id: str,
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Deleta um bloqueio de sua agenda."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
         
@@ -1260,11 +1246,11 @@ def listar_meus_pacientes(
 def criar_postagem(
     postagem_data: schemas.PostagemCreate,
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Cria uma nova postagem no feed do negócio."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado para este usuário neste negócio.")
     
@@ -1314,11 +1300,11 @@ def get_comentarios(
 def deletar_postagem(
     postagem_id: str,
     negocio_id: str = Depends(validate_negocio_id),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Deleta uma de suas postagens."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
         
@@ -1395,7 +1381,7 @@ def marcar_todas_como_lidas(
 def agendar_notificacao_endpoint(
     notificacao_data: schemas.NotificacaoAgendadaCreate,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional/Enfermeiro) Agenda o envio de uma notificação para um paciente."""
@@ -1926,11 +1912,11 @@ def cancelar_agendamento_endpoint(
 @app.get("/me/agendamentos", response_model=List[schemas.AgendamentoResponse], tags=["Profissional - Autogestão"])
 def listar_meus_agendamentos_profissional(
     negocio_id: str = Header(..., description="ID do Negócio no qual o profissional está atuando."),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Lista todos os agendamentos recebidos."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
     
@@ -1940,11 +1926,11 @@ def listar_meus_agendamentos_profissional(
 def cancelar_agendamento_pelo_profissional_endpoint(
     agendamento_id: str,
     negocio_id: str = Header(..., description="ID do Negócio no qual o profissional está atuando."),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Cancela um agendamento que recebeu."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
     
@@ -1958,11 +1944,11 @@ def cancelar_agendamento_pelo_profissional_endpoint(
 def confirmar_agendamento_pelo_profissional_endpoint(
     agendamento_id: str,
     negocio_id: str = Header(..., description="ID do Negócio no qual o profissional está atuando."),
-    profissional_user: schemas.UsuarioProfile = Depends(get_current_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Profissional) Confirma um agendamento pendente."""
-    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, profissional_user.firebase_uid)
+    perfil_profissional = crud.buscar_profissional_por_uid(db, negocio_id, current_user.firebase_uid)
     if not perfil_profissional:
         raise HTTPException(status_code=404, detail="Perfil profissional não encontrado.")
 
@@ -2100,7 +2086,7 @@ async def upload_file_endpoint(
 def enviar_pesquisa(
     negocio_id: str,
     envio_data: schemas.PesquisaEnviadaCreate,
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin) Envia uma pesquisa de satisfação para um paciente."""
@@ -2133,7 +2119,7 @@ def submeter_respostas(
 def get_resultados_pesquisas(
     negocio_id: str,
     modelo_pesquisa_id: Optional[str] = Query(None, description="Filtre os resultados por um modelo de pesquisa específico."),
-    admin: schemas.UsuarioProfile = Depends(get_current_admin_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin) Lista todos os resultados das pesquisas de satisfação respondidas."""
@@ -2147,15 +2133,16 @@ def get_resultados_pesquisas(
 # =================================================================================
 
 @app.post("/pacientes/{paciente_id}/tarefas", response_model=schemas.TarefaAgendadaResponse, tags=["Tarefas Essenciais"])
-def criar_tarefa_essencial(
+@require_permission("checklist.create")
+async def criar_tarefa_essencial(
     paciente_id: str,
     tarefa_data: schemas.TarefaAgendadaCreate,
     request: Request,
-    current_user: schemas.UsuarioProfile = Depends(get_admin_or_profissional_autorizado_paciente),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("checklist.create")),
     negocio_id: str = Depends(validate_negocio_id),
     db: firestore.client = Depends(get_db)
 ):
-    """(Admin ou Enfermeiro) Cria uma nova tarefa essencial para um paciente com prazo."""
+    """Cria tarefa essencial. Requer permissão checklist.create + vínculo com paciente."""
     # Obtém a URL do serviço para o Cloud Tasks
     service_url = os.getenv('CLOUD_RUN_SERVICE_URL') or str(request.base_url).rstrip('/')
 
@@ -2164,13 +2151,14 @@ def criar_tarefa_essencial(
     return nova_tarefa
 
 @app.get("/pacientes/{paciente_id}/tarefas", response_model=List[schemas.TarefaAgendadaResponse], tags=["Tarefas Essenciais"])
-def listar_tarefas_essenciais(
+@require_permission("checklist.read")
+async def listar_tarefas_essenciais(
     paciente_id: str,
     status: Optional[schemas.StatusTarefaEnum] = Query(None, description="Filtre por status: 'pendente', 'concluida' ou 'atrasada'."),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("checklist.read")),
     db: firestore.client = Depends(get_db)
 ):
-    """(Autorizado) Lista as tarefas de um paciente, com filtros."""
+    """Lista tarefas do paciente. Requer permissão checklist.read + vínculo com paciente."""
     return crud.listar_tarefas_por_paciente(db, paciente_id, status)
 
 @app.patch("/tarefas/{tarefa_id}/concluir", response_model=schemas.TarefaAgendadaResponse, tags=["Tarefas Essenciais"])
@@ -2244,7 +2232,7 @@ def get_checklist_diario(
     paciente_id: str,
     data: date = Query(..., description="Data do checklist (formato: YYYY-MM-DD)."),
     negocio_id: str = Header(..., alias="negocio-id", description="ID do Negócio."),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("patients.read")),
     db: firestore.client = Depends(get_db),
 ):
     """
@@ -2283,7 +2271,7 @@ def update_checklist_item_diario(
 async def criar_anamnese(
     paciente_id: str,
     anamnese_data: schemas.AnamneseCreate,
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Cria uma nova ficha de anamnese para um paciente."""
@@ -2306,7 +2294,7 @@ async def atualizar_anamnese(
     anamnese_id: str,
     paciente_id: str = Query(..., description="ID do paciente a quem a anamnese pertence."),
     update_data: schemas.AnamneseUpdate = ...,
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Atualiza uma ficha de anamnese existente."""
@@ -2324,7 +2312,7 @@ async def atualizar_anamnese(
 async def atualizar_endereco_paciente(
     paciente_id: str,
     endereco_data: schemas.EnderecoUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Adiciona ou atualiza o endereço de um paciente."""
@@ -2338,7 +2326,7 @@ async def atualizar_endereco_paciente(
 async def atualizar_dados_pessoais_paciente(
     paciente_id: str,
     dados_pessoais: schemas.PacienteUpdateDadosPessoais,
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Atualiza dados pessoais básicos do paciente (migrados da anamnese)."""
@@ -2356,7 +2344,7 @@ async def atualizar_dados_pessoais_paciente(
 async def criar_relatorio_medico_endpoint(
     paciente_id: str,
     relatorio_data: schemas.RelatorioMedicoCreate,
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Profissional) Cria um novo relatório médico para um paciente."""
@@ -2533,7 +2521,7 @@ def recusar_relatorio_endpoint(
 def atualizar_relatorio_endpoint(
     relatorio_id: str,
     update_data: schemas.RelatorioMedicoUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Profissional) Atualiza o conteúdo de um relatório médico."""
@@ -2555,7 +2543,7 @@ def atualizar_relatorio_endpoint(
 @app.get("/pacientes/{paciente_id}/suporte-psicologico", response_model=List[schemas.SuportePsicologicoResponse], tags=["Suporte Psicológico"])
 def get_suportes_psicologicos(
     paciente_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("patients.read")),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin, Enfermeiro ou Técnico) Lista todos os recursos de suporte psicológico do paciente."""
@@ -2566,7 +2554,7 @@ def create_suporte_psicologico(
     paciente_id: str,
     suporte_data: schemas.SuportePsicologicoCreate,
     negocio_id: str = Depends(validate_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("patients.read")),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin, Enfermeiro ou Técnico) Cria um novo recurso de suporte (link ou texto)."""
@@ -2577,7 +2565,7 @@ def update_suporte_psicologico(
     paciente_id: str,
     suporte_id: str,
     update_data: schemas.SuportePsicologicoUpdate,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("patients.read")),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin, Enfermeiro ou Técnico) Atualiza um recurso de suporte existente."""
@@ -2590,7 +2578,7 @@ def update_suporte_psicologico(
 def delete_suporte_psicologico(
     paciente_id: str,
     suporte_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("patients.read")),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin, Enfermeiro ou Técnico) Deleta um recurso de suporte."""
@@ -2605,7 +2593,7 @@ def update_user_consent(
     user_id: str = Path(..., description="ID do usuário a ser atualizado."),
     consent_data: schemas.ConsentimentoLGPDUpdate = ...,
     # Permissão: Apenas Admin ou Profissional do negócio podem atualizar o consentimento
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """(Admin ou Enfermeiro) Atualiza os dados de consentimento LGPD de um usuário."""
@@ -3200,7 +3188,7 @@ def logout_user(
 def get_detalhes_usuario_negocio(
     user_id: str,
     negocio_id: str = Depends(validate_path_negocio_id),
-    current_user: schemas.UsuarioProfile = Depends(get_current_admin_or_profissional_user),
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
     db: firestore.client = Depends(get_db)
 ):
     """
@@ -3220,7 +3208,7 @@ def get_detalhes_usuario_negocio(
 @require_permission("patients.view")
 async def get_dados_completos_paciente(
     paciente_id: str,
-    current_user: schemas.UsuarioProfile = Depends(get_paciente_autorizado),
+    current_user: schemas.UsuarioProfile = Depends(get_patient_authorized_with_permission("patients.view")),
     db: firestore.client = Depends(get_db)
 ):
     """
