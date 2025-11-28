@@ -33,9 +33,9 @@ class CacheEntry<T> {
   final T data;
   final DateTime timestamp;
   final Duration ttl;
-  
+
   CacheEntry(this.data, this.ttl) : timestamp = DateTime.now();
-  
+
   bool get isExpired => DateTime.now().difference(timestamp) > ttl;
 }
 
@@ -61,12 +61,12 @@ class ApiService {
     // Se não tem '/' no início, adiciona
     return '${AppConfig.apiBaseUrl}/$imagePath';
   }
-  
+
   // Cache interno com TTL de 5 minutos por padrão
   final Map<String, CacheEntry> _cache = {};
   final Duration _defaultTtl = const Duration(minutes: 5);
   final CacheManager _cacheManager = CacheManager.instance;
-  
+
   // Controle de cache por usuário
   DateTime? _lastUserLogin;
 
@@ -76,10 +76,11 @@ class ApiService {
   String _getCacheKey(String endpoint, [Map<String, dynamic>? params]) {
     final userId = _authService.currentUser?.id ?? 'anonymous';
     final negocioId = _authService.getNegocioId() ?? 'default';
-    final paramString = params?.entries.map((e) => '${e.key}=${e.value}').join('&') ?? '';
+    final paramString =
+        params?.entries.map((e) => '${e.key}=${e.value}').join('&') ?? '';
     return '${userId}_${negocioId}_${endpoint}_$paramString';
   }
-  
+
   T? _getFromCache<T>(String cacheKey) {
     final entry = _cache[cacheKey] as CacheEntry<T>?;
     if (entry != null && !entry.isExpired) {
@@ -90,26 +91,26 @@ class ApiService {
     }
     return null;
   }
-  
+
   void _setCache<T>(String cacheKey, T data, {Duration? ttl}) {
     _cache[cacheKey] = CacheEntry<T>(data, ttl ?? _defaultTtl);
   }
-  
+
   void clearCache([String? pattern]) async {
     final userId = _authService.currentUser?.id;
     final negocioId = await _authService.getNegocioId();
-    
-    
+
     // Limpa cache em memória (legacy) - MAIS AGRESSIVO
     if (pattern != null) {
-      final keysToRemove = _cache.keys.where((key) => key.contains(pattern)).toList();
+      final keysToRemove =
+          _cache.keys.where((key) => key.contains(pattern)).toList();
       for (final key in keysToRemove) {
         _cache.remove(key);
       }
     } else {
       _cache.clear();
     }
-    
+
     // Limpa cache persistente - FORÇADO
     try {
       if (userId != null && negocioId != null) {
@@ -121,15 +122,13 @@ class ApiService {
       } else {
         await _cacheManager.clear(pattern: pattern);
       }
-    } catch (e) {
-    }
-    
+    } catch (e) {}
+
     // FORÇA limpeza adicional para padrões específicos problemáticos
     if (pattern == 'getPacientes') {
       try {
         await _cacheManager.clear(); // Limpa TUDO relacionado a pacientes
-      } catch (e) {
-      }
+      } catch (e) {}
     }
   }
 
@@ -137,8 +136,7 @@ class ApiService {
     final token = await _authService.getIdToken();
     final negocioId = await _authService.getNegocioId();
 
-    if (token != null) {
-    }
+    if (token != null) {}
 
     if (token == null || negocioId == null) {
       throw Exception('User not authenticated or negocioId not found.');
@@ -150,17 +148,17 @@ class ApiService {
       'negocio-id': negocioId,
     };
 
-
     return headers;
   }
 
   // --- ANAMNESE ---
 
-  Future<Anamnese> createAnamnese(String pacienteId, Map<String, dynamic> data) async {
+  Future<Anamnese> createAnamnese(
+      String pacienteId, Map<String, dynamic> data) async {
     final negocioId = await _authService.getNegocioId();
-    final url = '$_baseUrl/pacientes/$pacienteId/anamnese?negocio_id=$negocioId';
+    final url =
+        '$_baseUrl/pacientes/$pacienteId/anamnese?negocio_id=$negocioId';
     final uri = Uri.parse(url);
-    
 
     final response = await http.post(
       uri,
@@ -176,7 +174,8 @@ class ApiService {
 
   Future<List<Anamnese>> getAnamneseHistory(String pacienteId) async {
     final negocioId = await _authService.getNegocioId();
-    final url = '$_baseUrl/pacientes/$pacienteId/anamnese?negocio_id=$negocioId';
+    final url =
+        '$_baseUrl/pacientes/$pacienteId/anamnese?negocio_id=$negocioId';
     final uri = Uri.parse(url);
     final response = await http.get(uri, headers: await _getHeaders());
     if (response.statusCode == 200) {
@@ -187,10 +186,10 @@ class ApiService {
     }
   }
 
-  Future<Anamnese> updateAnamnese(String anamneseId, Map<String, dynamic> data) async {
+  Future<Anamnese> updateAnamnese(
+      String anamneseId, Map<String, dynamic> data) async {
     final url = '$_baseUrl/anamnese/$anamneseId';
     final uri = Uri.parse(url);
-
 
     final response = await http.put(
       uri,
@@ -210,14 +209,11 @@ class ApiService {
     try {
       final uri = Uri.parse('$_baseUrl/me/profile');
       final headers = await _getHeaders();
-      
-      headers.forEach((key, value) {
-      });
-      
+
+      headers.forEach((key, value) {});
+
       final response = await http.get(uri, headers: headers);
-      
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // Método para obter dados atualizados do perfil do usuário
@@ -225,9 +221,9 @@ class ApiService {
     try {
       final uri = Uri.parse('$_baseUrl/me/profile');
       final headers = await _getHeaders();
-      
+
       final response = await http.get(uri, headers: headers);
-      
+
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
         return Usuario.fromJson(responseBody);
@@ -253,21 +249,20 @@ class ApiService {
     }
   }
 
-
   // --- UPLOAD DE ARQUIVOS ---
 
   Future<Map<String, dynamic>> uploadFoto(String filePath) async {
     final uri = Uri.parse('$_baseUrl/upload-foto');
     final request = http.MultipartRequest('POST', uri);
-    
+
     final headers = await _getHeaders();
     request.headers.addAll(headers);
-    
+
     request.files.add(await http.MultipartFile.fromPath('file', filePath));
-    
+
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
-    
+
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
@@ -278,15 +273,15 @@ class ApiService {
   Future<Map<String, dynamic>> uploadFile(String filePath) async {
     final uri = Uri.parse('$_baseUrl/upload-file');
     final request = http.MultipartRequest('POST', uri);
-    
+
     final headers = await _getHeaders();
     request.headers.addAll(headers);
-    
+
     request.files.add(await http.MultipartFile.fromPath('file', filePath));
-    
+
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
-    
+
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
@@ -303,7 +298,8 @@ class ApiService {
     Map<String, dynamic> data,
   ) async {
     // Adiciona o consulta_id como query parameter na URL
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/orientacoes?consulta_id=$consultaId');
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/orientacoes?consulta_id=$consultaId');
     final response = await http.post(
       uri,
       headers: await _getHeaders(),
@@ -326,7 +322,8 @@ class ApiService {
     Map<String, dynamic> data,
   ) async {
     // Adiciona o consulta_id como query parameter na URL
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/checklist-itens?consulta_id=$consultaId');
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/checklist-itens?consulta_id=$consultaId');
     final response = await http.post(
       uri,
       headers: await _getHeaders(),
@@ -347,7 +344,8 @@ class ApiService {
     Map<String, dynamic> data,
   ) async {
     // Adiciona o consulta_id como query parameter na URL
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/medicacoes?consulta_id=$consultaId');
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/medicacoes?consulta_id=$consultaId');
     final response = await http.post(
       uri,
       headers: await _getHeaders(),
@@ -361,7 +359,8 @@ class ApiService {
 
   Future<void> createExame(String pacienteId, Map<String, dynamic> data) async {
     final negocioId = await _authService.getNegocioId();
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/exames?negocio_id=$negocioId');
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/exames?negocio_id=$negocioId');
 
     final bodyData = Map<String, dynamic>.from(data);
 
@@ -370,7 +369,6 @@ class ApiService {
       headers: await _getHeaders(),
       body: json.encode(bodyData),
     );
-
 
     if (response.statusCode != 201) {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
@@ -381,29 +379,29 @@ class ApiService {
     // await _agendarLembreteExame(pacienteId, data);
   }
 
-  Future<List<Exame>> getExames(String pacienteId, {bool forceRefresh = false}) async {
+  Future<List<Exame>> getExames(String pacienteId,
+      {bool forceRefresh = false}) async {
     final cacheKey = _getCacheKey('getExames', {'pacienteId': pacienteId});
-    
+
     if (!forceRefresh) {
       final cached = _getFromCache<List<Exame>>(cacheKey);
       if (cached != null) return cached;
     }
-    
+
     final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/exames');
-    
+
     try {
       final response = await http.get(
         uri,
         headers: await _getHeaders(),
       );
 
-
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
         final List<Exame> exames = jsonList
             .map((json) => Exame.fromJson(json as Map<String, dynamic>))
             .toList();
-        
+
         _setCache(cacheKey, exames, ttl: const Duration(minutes: 5));
         return exames;
       } else if (response.statusCode == 404) {
@@ -413,23 +411,24 @@ class ApiService {
         throw Exception(ErrorHandler.getApiErrorMessage(response));
       }
     } catch (e) {
-      throw Exception('Falha ao carregar exames. Verifique sua conexão ou tente novamente mais tarde.');
+      throw Exception(
+          'Falha ao carregar exames. Verifique sua conexão ou tente novamente mais tarde.');
     }
   }
 
-  Future<void> updateExame(String pacienteId, String exameId, Map<String, dynamic> data) async {
+  Future<void> updateExame(
+      String pacienteId, String exameId, Map<String, dynamic> data) async {
     final negocioId = await _authService.getNegocioId();
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/exames/$exameId?negocio_id=$negocioId');
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/exames/$exameId?negocio_id=$negocioId');
 
     final bodyData = Map<String, dynamic>.from(data);
-
 
     final response = await http.put(
       uri,
       headers: await _getHeaders(),
       body: json.encode(bodyData),
     );
-
 
     if (response.statusCode != 200) {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
@@ -447,24 +446,24 @@ class ApiService {
 
   Future<void> deleteExame(String pacienteId, String exameId) async {
     final negocioId = await _authService.getNegocioId();
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/exames/$exameId?negocio_id=$negocioId');
-    
-    
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/exames/$exameId?negocio_id=$negocioId');
+
     final response = await http.delete(
       uri,
       headers: await _getHeaders(),
     );
-    
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
     }
-    
+
     final cacheKey = _getCacheKey('getExames', {'pacienteId': pacienteId});
     _cache.remove(cacheKey);
   }
 
-  Future<List<Prontuario>> getProntuarios(String pacienteId, {bool forceRefresh = false}) async {
+  Future<List<Prontuario>> getProntuarios(String pacienteId,
+      {bool forceRefresh = false}) async {
     final cacheKey = _getCacheKey('getProntuarios', {'pacienteId': pacienteId});
 
     if (!forceRefresh) {
@@ -486,12 +485,14 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonData = json.decode(response.body);
-      final prontuarios = jsonData.map((item) => Prontuario.fromJson(item)).toList();
+      final prontuarios =
+          jsonData.map((item) => Prontuario.fromJson(item)).toList();
 
       debugPrint('📝 Prontuários encontrados: ${prontuarios.length}');
       for (int i = 0; i < prontuarios.length; i++) {
         final p = prontuarios[i];
-        debugPrint('📝 Prontuário $i: ${p.titulo} - ${p.conteudo.substring(0, p.conteudo.length < 50 ? p.conteudo.length : 50)}...');
+        debugPrint(
+            '📝 Prontuário $i: ${p.titulo} - ${p.conteudo.substring(0, p.conteudo.length < 50 ? p.conteudo.length : 50)}...');
       }
 
       _setCache(cacheKey, prontuarios, ttl: const Duration(minutes: 3));
@@ -501,7 +502,8 @@ class ApiService {
     }
   }
 
-  Future<void> createProntuario(String pacienteId, Map<String, dynamic> data) async {
+  Future<void> createProntuario(
+      String pacienteId, Map<String, dynamic> data) async {
     debugPrint('🔍 CRIANDO PRONTUÁRIO - Novo endpoint:');
     debugPrint('📝 Paciente ID: $pacienteId');
     debugPrint('📝 Dados: $data');
@@ -535,16 +537,17 @@ class ApiService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         debugPrint('✅ PRONTUÁRIO CRIADO COM SUCESSO!');
       } else {
-        debugPrint('❌ ERRO AO CRIAR PRONTUÁRIO - Status: ${response.statusCode}');
+        debugPrint(
+            '❌ ERRO AO CRIAR PRONTUÁRIO - Status: ${response.statusCode}');
         debugPrint('📝 Erro detalhado: ${response.body}');
         throw Exception(ErrorHandler.getApiErrorMessage(response));
       }
 
       // Limpar cache para forçar reload
-      final cacheKey = _getCacheKey('getProntuarios', {'pacienteId': pacienteId});
+      final cacheKey =
+          _getCacheKey('getProntuarios', {'pacienteId': pacienteId});
       _cache.remove(cacheKey);
       debugPrint('📝 Cache limpo para chave: $cacheKey');
-
     } catch (e, stackTrace) {
       debugPrint('❌ EXCEPTION ao criar prontuário: $e');
       debugPrint('📝 Stack trace: $stackTrace');
@@ -553,7 +556,7 @@ class ApiService {
   }
 
   // --- FICHA COMPLETA ---
-  
+
   Future<FichaCompleta> getFichaCompleta(
     String pacienteId, {
     String? consultaId,
@@ -563,12 +566,12 @@ class ApiService {
       'pacienteId': pacienteId,
       'consultaId': consultaId ?? 'null',
     });
-    
+
     if (!forceRefresh) {
       final cached = _getFromCache<FichaCompleta>(cacheKey);
       if (cached != null) return cached;
     }
-    
+
     String url = '$_baseUrl/pacientes/$pacienteId/ficha-completa';
 
     if (consultaId != null && consultaId.isNotEmpty) {
@@ -581,21 +584,23 @@ class ApiService {
     final uri = Uri.parse(url);
 
     try {
-      final response = await http.get(
-        uri,
-        headers: await _getHeaders()
-      ).timeout(const Duration(seconds: 30));
-
+      final response = await http
+          .get(uri, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final dynamic jsonData = json.decode(response.body);
 
         // DEBUG: Log do JSON recebido do backend
         debugPrint('🔍 FICHA COMPLETA DEBUG - consultaId: $consultaId');
-        debugPrint('📝 Medicações no JSON: ${jsonData['medicacoes']?.length ?? 0}');
-        debugPrint('📝 Checklist no JSON: ${jsonData['checklist']?.length ?? 0}');
-        debugPrint('📝 Orientações no JSON: ${jsonData['orientacoes']?.length ?? 0}');
-        debugPrint('📝 Prontuários no JSON: ${jsonData['prontuarios']?.length ?? 0}');
+        debugPrint(
+            '📝 Medicações no JSON: ${jsonData['medicacoes']?.length ?? 0}');
+        debugPrint(
+            '📝 Checklist no JSON: ${jsonData['checklist']?.length ?? 0}');
+        debugPrint(
+            '📝 Orientações no JSON: ${jsonData['orientacoes']?.length ?? 0}');
+        debugPrint(
+            '📝 Prontuários no JSON: ${jsonData['prontuarios']?.length ?? 0}');
 
         final fichaCompleta = FichaCompleta.fromJson(jsonData);
 
@@ -610,40 +615,47 @@ class ApiService {
         throw Exception(ErrorHandler.getApiErrorMessage(response));
       }
     } catch (e) {
-      throw Exception('Falha ao carregar os dados do paciente. Verifique sua conexão ou tente novamente mais tarde.');
+      throw Exception(
+          'Falha ao carregar os dados do paciente. Verifique sua conexão ou tente novamente mais tarde.');
     }
   }
 
   // --- PACIENTES ---
 
-  Future<void> updatePatientPersonalData(String pacienteId, Map<String, dynamic> data) async {
+  Future<void> updatePatientPersonalData(
+      String pacienteId, Map<String, dynamic> data) async {
     try {
       final userId = _authService.currentUser?.id;
       final negocioId = await _authService.getNegocioId();
       final token = await _authService.getIdToken();
 
       if (userId == null || negocioId == null || token == null) {
-        throw Exception('Usuário não autenticado ou dados de negócio indisponíveis');
+        throw Exception(
+            'Usuário não autenticado ou dados de negócio indisponíveis');
       }
 
-      final url = '$_baseUrl/pacientes/$pacienteId/dados-pessoais?negocio_id=$negocioId';
-      
+      final url =
+          '$_baseUrl/pacientes/$pacienteId/dados-pessoais?negocio_id=$negocioId';
+
       final headers = <String, String>{
         'Content-Type': 'application/json; charset=UTF-8',
         'Authorization': 'Bearer $token',
       };
 
-      final response = await http.put(
-        Uri.parse(url),
-        headers: headers,
-        body: jsonEncode(data),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .put(
+            Uri.parse(url),
+            headers: headers,
+            body: jsonEncode(data),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         _invalidatePatientCache(userId, negocioId);
       } else {
         final errorData = jsonDecode(response.body);
-        throw Exception(errorData['detail'] ?? 'Erro ao atualizar dados pessoais');
+        throw Exception(
+            errorData['detail'] ?? 'Erro ao atualizar dados pessoais');
       }
     } catch (e) {
       rethrow;
@@ -651,25 +663,27 @@ class ApiService {
   }
 
   void _invalidatePatientCache(String userId, String negocioId) {
-    final keys = _cache.keys.where((key) => key.contains('getPacientes')).toList();
+    final keys =
+        _cache.keys.where((key) => key.contains('getPacientes')).toList();
     for (final key in keys) {
       _cache.remove(key);
     }
-    
   }
-  
+
   Future<List<Paciente>> getPacientes({bool forceRefresh = false}) async {
     final userId = _authService.currentUser?.id ?? 'anonymous';
-    final userRole = _authService.currentUser?.roles?[await _authService.getNegocioId() ?? 'default'] ?? 'unknown';
+    final userRole = _authService.currentUser
+            ?.roles?[await _authService.getNegocioId() ?? 'default'] ??
+        'unknown';
     final negocioId = await _authService.getNegocioId() ?? 'default';
-    
-    
+
     final currentTime = DateTime.now();
-    if (_lastUserLogin == null || currentTime.difference(_lastUserLogin!) > const Duration(minutes: 2)) {
+    if (_lastUserLogin == null ||
+        currentTime.difference(_lastUserLogin!) > const Duration(minutes: 2)) {
       _lastUserLogin = currentTime;
       forceRefresh = true;
     }
-    
+
     if (!forceRefresh) {
       final cached = await _cacheManager.get<List<dynamic>>(
         'getPacientes',
@@ -677,32 +691,33 @@ class ApiService {
         negocioId,
       );
       if (cached != null) {
-        final pacientes = cached.map((json) => Paciente.fromJson(json)).toList();
-        
+        final pacientes =
+            cached.map((json) => Paciente.fromJson(json)).toList();
+
         _preloadPatientDetails(pacientes.take(3).toList());
-        
+
         return pacientes;
       }
     }
-    
+
     final uri = Uri.parse('$_baseUrl/me/pacientes');
-    
+
     try {
       final headers = await _getHeaders();
-      headers.forEach((key, value) {
-      });
-      
+      headers.forEach((key, value) {});
+
       final response = await http.get(uri, headers: headers);
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> jsonData = json.decode(response.body);
-        
+
         for (int i = 0; i < jsonData.length && i < 3; i++) {
           final patientData = jsonData[i];
         }
-        
-        final pacientes = jsonData.map((json) => Paciente.fromJson(json)).toList();
-        
+
+        final pacientes =
+            jsonData.map((json) => Paciente.fromJson(json)).toList();
+
         await _cacheManager.set(
           'getPacientes',
           jsonData,
@@ -710,9 +725,9 @@ class ApiService {
           negocioId,
           ttl: const Duration(minutes: 5),
         );
-        
+
         _preloadPatientDetails(pacientes.take(3).toList());
-        
+
         return pacientes;
       } else {
         throw Exception(
@@ -720,26 +735,26 @@ class ApiService {
         );
       }
     } catch (e) {
-      
       final cached = await _cacheManager.get<List<dynamic>>(
         'getPacientes',
         userId,
         negocioId,
       );
       if (cached != null) {
-        final pacientes = cached.map((json) => Paciente.fromJson(json)).toList();
-        
+        final pacientes =
+            cached.map((json) => Paciente.fromJson(json)).toList();
+
         _preloadPatientDetails(pacientes.take(3).toList());
-        
+
         return pacientes;
       }
-      
+
       rethrow;
     }
   }
 
   // --- CONSULTAS ---
-  
+
   Future<Consulta> createConsulta(
     String pacienteId,
     Map<String, dynamic> data,
@@ -759,7 +774,7 @@ class ApiService {
   }
 
   // --- DIÁRIO SIMPLES (MANTIDO PARA COMPATIBILIDADE) ---
-  
+
   Future<List<Diario>> getDiario(String pacienteId) async {
     final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/diario');
     final response = await http.get(uri, headers: await _getHeaders());
@@ -822,7 +837,7 @@ class ApiService {
   }
 
   // --- USUÁRIOS E PATIENTS ---
-  
+
   Future<Usuario> createPatient(Map<String, dynamic> data) async {
     final negocioId = await _authService.getNegocioId();
     if (negocioId == null) {
@@ -838,25 +853,24 @@ class ApiService {
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {
-      
       clearCache('getAllUsersInBusiness');
       clearCache('getAllPatients');
-      
+
       return Usuario.fromJson(json.decode(response.body));
     } else {
       throw Exception('Falha ao criar paciente.');
     }
   }
 
-  Future<void> updatePatientAddress(String patientId, Map<String, dynamic> addressData) async {
+  Future<void> updatePatientAddress(
+      String patientId, Map<String, dynamic> addressData) async {
     final negocioId = await _authService.getNegocioId();
     if (negocioId == null) {
       throw Exception("Negocio ID não encontrado para adicionar à URL.");
     }
-    
+
     final url = '$_baseUrl/pacientes/$patientId/endereco?negocio_id=$negocioId';
     final uri = Uri.parse(url);
-    
 
     final response = await http.put(
       uri,
@@ -867,58 +881,60 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
     }
-    
+
     // Invalidar cache após atualização bem-sucedida
     await invalidateRelatedCache('patient_updated', pacienteId: patientId);
   }
 
   Future<Usuario> syncProfile(Map<String, dynamic> data) async {
     final uri = Uri.parse('$_baseUrl/users/sync-profile');
-    
+
     final headers = await _getHeaders();
     final body = json.encode(data);
 
-    
-    final response = await http.post(
-      uri,
-      headers: headers,
-      body: body,
-    ).timeout(const Duration(seconds: 15));
+    final response = await http
+        .post(
+          uri,
+          headers: headers,
+          body: body,
+        )
+        .timeout(const Duration(seconds: 15));
 
     if (response.statusCode == 200 || response.statusCode == 201) {
-
-
       final dynamic jsonData = json.decode(response.body);
       if (jsonData is Map<String, dynamic>) {
-        jsonData.forEach((k, v) {
-        });
+        jsonData.forEach((k, v) {});
       }
 
       return Usuario.fromJson(jsonData);
     } else {
-      
       if (response.statusCode == 500) {
-        throw Exception('Erro interno do servidor (500). O backend pode estar temporariamente indisponível.');
+        throw Exception(
+            'Erro interno do servidor (500). O backend pode estar temporariamente indisponível.');
       } else if (response.statusCode == 404) {
-        throw Exception('Endpoint não encontrado (404). Verifique se o backend está rodando a versão correta.');
+        throw Exception(
+            'Endpoint não encontrado (404). Verifique se o backend está rodando a versão correta.');
       } else if (response.statusCode == 403) {
-        throw Exception('Acesso negado (403). O usuário pode não ter permissão para este negócio.');
+        throw Exception(
+            'Acesso negado (403). O usuário pode não ter permissão para este negócio.');
       } else {
-        throw Exception('Falha ao sincronizar o perfil do usuário. Status: ${response.statusCode}');
+        throw Exception(
+            'Falha ao sincronizar o perfil do usuário. Status: ${response.statusCode}');
       }
     }
   }
 
-  Future<Usuario?> updateUserProfile(Map<String, dynamic> data, {Uint8List? imageBytes}) async {
+  Future<Usuario?> updateUserProfile(Map<String, dynamic> data,
+      {Uint8List? imageBytes}) async {
     final uri = Uri.parse('$_baseUrl/me/profile');
-    
+
     final headers = await _getHeaders();
-    
+
     final updateData = <String, dynamic>{
       'nome': data['nome'],
       'telefone': data['telefone'],
     };
-    
+
     if (data.containsKey('endereco') && data['endereco'] != null) {
       updateData['endereco'] = data['endereco'];
     }
@@ -927,43 +943,40 @@ class ApiService {
       final base64Image = base64Encode(imageBytes);
       updateData['profile_image'] = 'data:image/jpeg;base64,$base64Image';
     }
-    
+
     updateData.removeWhere((key, value) => value == null || value == '');
 
     final safeLogData = Map.from(updateData);
     if (safeLogData.containsKey('profile_image')) {
       safeLogData['profile_image'] = '...base64_data...';
     }
-    
+
     final response = await http.put(
       uri,
       headers: headers,
       body: json.encode(updateData),
     );
 
-
     if (response.statusCode == 200) {
-      
       clearCache('getAllUsersInBusiness');
       clearCache('syncProfile');
-      
+
       try {
         final responseData = json.decode(response.body);
         if (responseData['user'] != null) {
           return Usuario.fromJson(responseData['user']);
         }
-      } catch (e) {
-      }
-      
+      } catch (e) {}
+
       return null;
     } else if (response.statusCode == 204) {
-      
       clearCache('getAllUsersInBusiness');
       clearCache('syncProfile');
-      
+
       return null;
     } else {
-      throw Exception('Erro ao atualizar perfil: ${response.statusCode} - ${response.body}');
+      throw Exception(
+          'Erro ao atualizar perfil: ${response.statusCode} - ${response.body}');
     }
   }
 
@@ -989,7 +1002,8 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       debugPrint('✅ FCM_DEBUG: Token registrado com sucesso!');
     } else {
-      throw Exception('Erro ao enviar token FCM: ${response.statusCode} - ${response.body}');
+      throw Exception(
+          'Erro ao enviar token FCM: ${response.statusCode} - ${response.body}');
     }
   }
 
@@ -1002,7 +1016,8 @@ class ApiService {
     final updateData = {'apns_token': apnsToken};
 
     debugPrint('🍎 APNS_DEBUG: Enviando para: ${uri.toString()}');
-    debugPrint('🍎 APNS_DEBUG: Token (preview): ${apnsToken.substring(0, 50)}...');
+    debugPrint(
+        '🍎 APNS_DEBUG: Token (preview): ${apnsToken.substring(0, 50)}...');
 
     final response = await http.post(
       uri,
@@ -1016,7 +1031,8 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       debugPrint('✅ APNS_DEBUG: Token APNs registrado com sucesso!');
     } else {
-      throw Exception('Erro ao enviar token APNs: ${response.statusCode} - ${response.body}');
+      throw Exception(
+          'Erro ao enviar token APNs: ${response.statusCode} - ${response.body}');
     }
   }
 
@@ -1042,7 +1058,8 @@ class ApiService {
     if (response.statusCode == 200) {
       debugPrint('✅ APNS_DEBUG: Token APNs removido com sucesso!');
     } else {
-      throw Exception('Erro ao remover token APNs: ${response.statusCode} - ${response.body}');
+      throw Exception(
+          'Erro ao remover token APNs: ${response.statusCode} - ${response.body}');
     }
   }
 
@@ -1050,12 +1067,15 @@ class ApiService {
     final uri = Uri.parse('$_baseUrl/tasks/debug-technician-notifications');
 
     try {
-      final response = await http.post(
-        uri,
-        headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            uri,
+            headers: await _getHeaders(),
+          )
+          .timeout(const Duration(seconds: 30));
 
-      debugPrint('🔍 Debug Technician Notifications Response: ${response.statusCode}');
+      debugPrint(
+          '🔍 Debug Technician Notifications Response: ${response.statusCode}');
       debugPrint('🔍 Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
@@ -1069,10 +1089,11 @@ class ApiService {
     }
   }
 
-  Future<List<Usuario>> getAllUsersInBusiness({String status = 'ativo', bool forceRefresh = false}) async {
+  Future<List<Usuario>> getAllUsersInBusiness(
+      {String status = 'ativo', bool forceRefresh = false}) async {
     final userId = _authService.currentUser?.id ?? 'anonymous';
     final negocioId = await _authService.getNegocioId() ?? 'default';
-    
+
     if (!forceRefresh) {
       final cached = await _cacheManager.get<List<dynamic>>(
         'getAllUsersInBusiness',
@@ -1084,7 +1105,7 @@ class ApiService {
         return cached.map((json) => Usuario.fromJson(json)).toList();
       }
     }
-    
+
     if (negocioId == 'default') throw Exception('Negocio ID não encontrado.');
 
     String url = '$_baseUrl/negocios/$negocioId/usuarios';
@@ -1093,20 +1114,18 @@ class ApiService {
     }
 
     final uri = Uri.parse(url);
-    
 
     try {
       final headers = await _getHeaders();
-      headers.forEach((key, value) {
-      });
-      
+      headers.forEach((key, value) {});
+
       final response = await http.get(uri, headers: headers);
-      
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> jsonData = json.decode(response.body);
-        final usuarios = jsonData.map((json) => Usuario.fromJson(json)).toList();
-        
+        final usuarios =
+            jsonData.map((json) => Usuario.fromJson(json)).toList();
+
         await _cacheManager.set(
           'getAllUsersInBusiness',
           jsonData,
@@ -1116,8 +1135,7 @@ class ApiService {
           ttl: const Duration(minutes: 5),
         );
         return usuarios;
-      } 
-      else if (response.statusCode == 403) {
+      } else if (response.statusCode == 403) {
         final emptyList = <Usuario>[];
         await _cacheManager.set(
           'getAllUsersInBusiness',
@@ -1128,12 +1146,10 @@ class ApiService {
           ttl: const Duration(minutes: 5),
         );
         return emptyList;
-      }
-      else {
+      } else {
         throw Exception('Falha ao carregar a lista de usuários.');
       }
     } catch (e) {
-      
       final cached = await _cacheManager.get<List<dynamic>>(
         'getAllUsersInBusiness',
         userId,
@@ -1143,7 +1159,7 @@ class ApiService {
       if (cached != null) {
         return cached.map((json) => Usuario.fromJson(json)).toList();
       }
-      
+
       rethrow;
     }
   }
@@ -1166,7 +1182,6 @@ class ApiService {
       throw Exception('Falha ao atualizar o papel do usuário.');
     }
 
-    
     clearCache('getAllUsersInBusiness');
   }
 
@@ -1174,7 +1189,8 @@ class ApiService {
     final negocioId = await _authService.getNegocioId();
     if (negocioId == null) throw Exception('Negocio ID não encontrado.');
 
-    final uri = Uri.parse('$_baseUrl/negocios/$negocioId/usuarios/$userId/status');
+    final uri =
+        Uri.parse('$_baseUrl/negocios/$negocioId/usuarios/$userId/status');
 
     final response = await http.patch(
       uri,
@@ -1185,21 +1201,17 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Falha ao atualizar o status do usuário.');
     }
-    
-    
+
     clearCache('getAllUsersInBusiness');
   }
 
-  Future<void> updateUserConsent(
-    String userId, 
-    bool consentimentoLgpd, 
-    DateTime dataConsentimento, 
-    String tipoConsentimento
-  ) async {
+  Future<void> updateUserConsent(String userId, bool consentimentoLgpd,
+      DateTime dataConsentimento, String tipoConsentimento) async {
     final negocioId = await _authService.getNegocioId();
     if (negocioId == null) throw Exception('Negocio ID não encontrado.');
 
-    final uri = Uri.parse('$_baseUrl/negocios/$negocioId/usuarios/$userId/consent');
+    final uri =
+        Uri.parse('$_baseUrl/negocios/$negocioId/usuarios/$userId/consent');
 
     final response = await http.patch(
       uri,
@@ -1214,21 +1226,16 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Falha ao atualizar o consentimento do usuário.');
     }
-    
-    
+
     clearCache('getAllUsersInBusiness');
   }
 
-  Future<void> updateMyConsent(
-    bool consentimentoLgpd, 
-    DateTime dataConsentimento, 
-    String tipoConsentimento
-  ) async {
-    
+  Future<void> updateMyConsent(bool consentimentoLgpd,
+      DateTime dataConsentimento, String tipoConsentimento) async {
     final uri = Uri.parse('$_baseUrl/me/consent');
-    
+
     final headers = await _getHeaders();
-    
+
     final body = json.encode({
       'consentimento_lgpd': consentimentoLgpd,
       'data_consentimento_lgpd': dataConsentimento.toIso8601String(),
@@ -1241,11 +1248,9 @@ class ApiService {
       body: body,
     );
 
-
     if (response.statusCode != 200) {
       throw Exception('Falha ao atualizar o consentimento.');
     }
-    
   }
 
   Future<Usuario?> getPatientById(String patienteId) async {
@@ -1257,7 +1262,7 @@ class ApiService {
 
     try {
       final response = await http.get(uri, headers: await _getHeaders());
-      
+
       if (response.statusCode == 200) {
         // ==========================================================
         // PRINT ADICIONADO AQUI
@@ -1277,11 +1282,13 @@ class ApiService {
     }
 
     // TENTATIVA 2 (FALLBACK)
-    final pacienteUri = Uri.parse('$_baseUrl/pacientes/$patienteId/dados-completos');
-    
+    final pacienteUri =
+        Uri.parse('$_baseUrl/pacientes/$patienteId/dados-completos');
+
     try {
-      final response = await http.get(pacienteUri, headers: await _getHeaders());
-      
+      final response =
+          await http.get(pacienteUri, headers: await _getHeaders());
+
       if (response.statusCode == 200) {
         // ==========================================================
         // PRINT ADICIONADO AQUI
@@ -1293,35 +1300,32 @@ class ApiService {
     } catch (e) {
       // Apenas log, vai tentar o próximo
     }
-    
+
     // TENTATIVA 3 (FALLBACK FINAL)
     try {
       final List<Paciente> pacientes = await getPacientes();
-      
+
       final paciente = pacientes.where((p) => p.id == patienteId).firstOrNull;
       if (paciente != null) {
-        
         final usuario = Usuario(
           id: paciente.id,
           nome: paciente.nome,
           email: paciente.email,
-          firebaseUid: '', 
+          firebaseUid: '',
           roles: {},
           telefone: paciente.telefone,
           endereco: paciente.endereco,
         );
-        
+
         return usuario;
-      } else {
-      }
-    } catch (e) {
-    }
+      } else {}
+    } catch (e) {}
 
     return null;
   }
 
 // --- VINCULAÇÕES ---
-  
+
   Future<void> linkPatientToNurse(
     String patientId,
     String? nurseProfileId,
@@ -1344,7 +1348,6 @@ class ApiService {
       throw Exception('Falha ao vincular/desvincular paciente ao enfermeiro.');
     }
 
-    
     clearCache('getAllUsersInBusiness');
     clearCache('getPacientes');
   }
@@ -1363,14 +1366,14 @@ class ApiService {
     final response = await http.patch(
       uri,
       headers: await _getHeaders(),
-      body: json.encode({'tecnicos_ids': technicianIds}), // CORREÇÃO APLICADA AQUI
+      body: json
+          .encode({'tecnicos_ids': technicianIds}), // CORREÇÃO APLICADA AQUI
     );
 
     if (response.statusCode != 200) {
       throw Exception('Falha ao vincular técnicos ao paciente.');
     }
 
-    
     clearCache('getAllUsersInBusiness');
     clearCache('getPacientes');
   }
@@ -1396,7 +1399,6 @@ class ApiService {
       throw Exception('Falha ao vincular/desvincular supervisor ao técnico.');
     }
 
-    
     clearCache('getAllUsersInBusiness');
     clearCache('getPacientes');
   }
@@ -1415,28 +1417,28 @@ class ApiService {
     final response = await http.post(
       uri,
       headers: await _getHeaders(),
-      body: json.encode({'medico_id': doctorId}), // Chave confirmada pelo backend
+      body:
+          json.encode({'medico_id': doctorId}), // Chave confirmada pelo backend
     );
 
     if (response.statusCode != 200) {
       throw Exception('Falha ao vincular/desvincular médico ao paciente.');
     }
 
-    
     clearCache('getAllUsersInBusiness');
     clearCache('getPacientes');
   }
 
   // --- NOVOS MÉTODOS: CONFIRMAÇÃO DE LEITURA ---
 
-  Future<void> confirmPlanReading(String patientId, String consultaId, String usuarioId) async {
+  Future<void> confirmPlanReading(
+      String patientId, String consultaId, String usuarioId) async {
     final uri = Uri.parse('$_baseUrl/pacientes/$patientId/confirmar-leitura');
-    
+
     final body = {
       'plano_version_id': consultaId,
       'usuario_id': usuarioId,
     };
-
 
     final response = await http.post(
       uri,
@@ -1447,24 +1449,23 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Falha ao confirmar leitura do plano.');
     }
-
   }
 
   Future<Map<String, dynamic>> getPlanReadingStatus(String patientId) async {
-    final uri = Uri.parse('$_baseUrl/pacientes/$patientId/confirmar-leitura/status');
-    http.Response response; 
+    final uri =
+        Uri.parse('$_baseUrl/pacientes/$patientId/confirmar-leitura/status');
+    http.Response response;
 
-    
     try {
       final headers = await _getHeaders();
 
       response = await http.get(uri, headers: headers);
 
-
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        throw Exception('Código: ${response.statusCode}, Resposta: ${response.body}');
+        throw Exception(
+            'Código: ${response.statusCode}, Resposta: ${response.body}');
       }
     } catch (e) {
       rethrow;
@@ -1492,7 +1493,7 @@ class ApiService {
       final queryDate = date ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
       final userId = _authService.currentUser?.id ?? 'anonymous';
       final negocioId = await _authService.getNegocioId() ?? 'default';
-      
+
       if (!forceRefresh) {
         final cached = await _cacheManager.get<List<dynamic>>(
           'getDailyChecklist_$queryDate',
@@ -1504,18 +1505,18 @@ class ApiService {
           return cached.map((json) => ChecklistItem.fromJson(json)).toList();
         }
       }
-      
-      String url = '$_baseUrl/pacientes/$patientId/checklist-diario?data=$queryDate';
-      final uri = Uri.parse(url);
 
+      String url =
+          '$_baseUrl/pacientes/$patientId/checklist-diario?data=$queryDate';
+      final uri = Uri.parse(url);
 
       final response = await http.get(uri, headers: await _getHeaders());
 
-
       if (response.statusCode == 200) {
         final List<dynamic> jsonData = json.decode(response.body);
-        final items = jsonData.map((json) => ChecklistItem.fromJson(json)).toList();
-        
+        final items =
+            jsonData.map((json) => ChecklistItem.fromJson(json)).toList();
+
         await _cacheManager.set(
           'getDailyChecklist_$queryDate',
           jsonData,
@@ -1524,20 +1525,23 @@ class ApiService {
           params: {'pacienteId': patientId},
           ttl: const Duration(minutes: 2),
         );
-        
+
         return items;
       } else if (response.statusCode == 404) {
         return [];
       } else if (response.statusCode == 401) {
-        throw Exception('Sem autorização para acessar checklist diário. Verifique seu login.');
+        throw Exception(
+            'Sem autorização para acessar checklist diário. Verifique seu login.');
       } else if (response.statusCode == 403) {
-        throw Exception('Sem permissão para acessar checklist diário deste paciente.');
+        throw Exception(
+            'Sem permissão para acessar checklist diário deste paciente.');
       } else {
-        throw Exception('Falha ao buscar checklist diário (Status: ${response.statusCode}).');
+        throw Exception(
+            'Falha ao buscar checklist diário (Status: ${response.statusCode}).');
       }
     } catch (e) {
       if (e is Exception && e.toString().contains('Status:')) {
-        rethrow; 
+        rethrow;
       }
       return [];
     }
@@ -1550,25 +1554,28 @@ class ApiService {
     String? date,
   }) async {
     final queryDate = date ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
-    String url = '$_baseUrl/pacientes/$patientId/checklist-diario/$itemId?data=$queryDate';
-    
+    String url =
+        '$_baseUrl/pacientes/$patientId/checklist-diario/$itemId?data=$queryDate';
+
     final uri = Uri.parse(url);
 
     try {
-      final response = await http.patch(
-        uri,
-        headers: await _getHeaders(),
-        body: json.encode({'concluido': isCompleted}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .patch(
+            uri,
+            headers: await _getHeaders(),
+            body: json.encode({'concluido': isCompleted}),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
         throw Exception(ErrorHandler.getApiErrorMessage(response));
       }
-      
+
       await invalidateRelatedCache('checklist_updated', pacienteId: patientId);
-      
     } catch (e) {
-      throw Exception('Falha ao atualizar o item do checklist. Verifique sua conexão ou tente novamente mais tarde.');
+      throw Exception(
+          'Falha ao atualizar o item do checklist. Verifique sua conexão ou tente novamente mais tarde.');
     }
   }
 
@@ -1576,22 +1583,20 @@ class ApiService {
     final negocioId = await _authService.getNegocioId() ?? 'default';
     final userRole = _authService.currentUser?.roles?[negocioId] ?? 'unknown';
     final userId = _authService.currentUser?.id ?? 'anonymous';
-    
+
     final uri = Uri.parse(
       '$_baseUrl/pacientes/$pacienteId/tecnicos-supervisionados',
     );
 
-
     final response = await http.get(uri, headers: await _getHeaders());
-
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonData = json.decode(response.body);
-      
+
       for (int i = 0; i < jsonData.length && i < 5; i++) {
         final tecnicoData = jsonData[i];
       }
-      
+
       return jsonData.map((json) => Usuario.fromJson(json)).toList();
     } else {
       throw Exception(
@@ -1611,7 +1616,7 @@ class ApiService {
     final userId = _authService.currentUser?.id ?? 'anonymous';
     final negocioId = await _authService.getNegocioId() ?? 'default';
     final queryDate = date ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
-    
+
     if (!forceRefresh) {
       final cached = await _cacheManager.get<List<dynamic>>(
         'getRegistrosDiario_$queryDate',
@@ -1623,13 +1628,13 @@ class ApiService {
         return cached.map((json) => RegistroDiario.fromJson(json)).toList();
       }
     }
-    
+
     String url = '$_baseUrl/pacientes/$pacienteId/registros';
-    
+
     final queryParams = <String>[];
     if (date != null) queryParams.add('data=$date');
     if (tipo != null) queryParams.add('tipo=$tipo');
-    
+
     if (queryParams.isNotEmpty) {
       url += '?${queryParams.join('&')}';
     }
@@ -1637,11 +1642,11 @@ class ApiService {
     final uri = Uri.parse(url);
     final response = await http.get(uri, headers: await _getHeaders());
 
-
     if (response.statusCode == 200) {
       final List<dynamic> jsonData = json.decode(response.body);
-      final registros = jsonData.map((json) => RegistroDiario.fromJson(json)).toList();
-      
+      final registros =
+          jsonData.map((json) => RegistroDiario.fromJson(json)).toList();
+
       await _cacheManager.set(
         'getRegistrosDiario_$queryDate',
         jsonData,
@@ -1650,7 +1655,7 @@ class ApiService {
         params: {'pacienteId': pacienteId, 'tipo': tipo ?? 'all'},
         ttl: const Duration(minutes: 2),
       );
-      
+
       return registros;
     } else {
       throw Exception(
@@ -1664,27 +1669,25 @@ class ApiService {
     Map<String, dynamic> data,
   ) async {
     final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/registros');
-    
+
     final negocioId = await _authService.getNegocioId();
     final completeData = {
       ...data,
       'paciente_id': pacienteId,
       'negocio_id': negocioId,
     };
-    
-    
+
     final response = await http.post(
       uri,
       headers: await _getHeaders(),
       body: json.encode(completeData),
     );
 
-
     if (response.statusCode == 201) {
       final registro = RegistroDiario.fromJson(json.decode(response.body));
-      
+
       await invalidateRelatedCache('registry_created', pacienteId: pacienteId);
-      
+
       return registro;
     } else {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
@@ -1696,8 +1699,9 @@ class ApiService {
     String registroId,
     Map<String, dynamic> data,
   ) async {
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/registros/$registroId');
-    
+    final uri =
+        Uri.parse('$_baseUrl/pacientes/$pacienteId/registros/$registroId');
+
     final response = await http.patch(
       uri,
       headers: await _getHeaders(),
@@ -1712,11 +1716,10 @@ class ApiService {
   }
 
   Future<void> deleteRegistroDiario(
-    String pacienteId,
-    String registroId
-  ) async {
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/registros/$registroId');
-    
+      String pacienteId, String registroId) async {
+    final uri =
+        Uri.parse('$_baseUrl/pacientes/$pacienteId/registros/$registroId');
+
     final response = await http.delete(uri, headers: await _getHeaders());
 
     if (response.statusCode != 204 && response.statusCode != 200) {
@@ -1739,7 +1742,7 @@ class ApiService {
   ) async {
     return getRegistrosDiario(pacienteId, tipo: tipo);
   }
-  
+
   Future<void> addStructuredDiaryEntry(
     String patientId,
     Map<String, dynamic> entryData,
@@ -1751,13 +1754,13 @@ class ApiService {
 
   void _preloadPatientDetails(List<Paciente> pacientes) {
     if (pacientes.isEmpty) return;
-    
+
     Future.delayed(const Duration(milliseconds: 500), () async {
       for (final paciente in pacientes) {
         try {
           final userId = _authService.currentUser?.id ?? 'anonymous';
           final negocioId = await _authService.getNegocioId() ?? 'default';
-          
+
           final cached = await _cacheManager.get<Map<String, dynamic>>(
             'getFichaCompleta',
             userId,
@@ -1767,28 +1770,26 @@ class ApiService {
               'consultaId': 'null',
             },
           );
-          
+
           if (cached == null) {
             await getFichaCompleta(paciente.id, forceRefresh: false);
-            
+
             await Future.delayed(const Duration(milliseconds: 200));
-          } else {
-          }
-        } catch (e) {
-        }
+          } else {}
+        } catch (e) {}
       }
     });
   }
 
-  Future<void> preloadRelatedData(String context, {String? pacienteId, String? userRole}) async {
+  Future<void> preloadRelatedData(String context,
+      {String? pacienteId, String? userRole}) async {
     try {
       final userId = _authService.currentUser?.id ?? 'anonymous';
       final negocioId = await _authService.getNegocioId() ?? 'default';
-      
+
       switch (context) {
         case 'patient_details':
           if (pacienteId != null) {
-            
             final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
             final checklistCached = await _cacheManager.get<List<dynamic>>(
               'getDailyChecklist_$today',
@@ -1796,34 +1797,32 @@ class ApiService {
               negocioId,
               params: {'pacienteId': pacienteId},
             );
-            
+
             if (checklistCached == null) {
               Future.delayed(const Duration(milliseconds: 300), () async {
                 try {
                   await getDailyChecklist(pacienteId, date: today);
-                } catch (e) {
-                }
+                } catch (e) {}
               });
             }
-            
+
             final registrosCached = await _cacheManager.get<List<dynamic>>(
               'getRegistrosDiario_$today',
               userId,
               negocioId,
               params: {'pacienteId': pacienteId},
             );
-            
+
             if (registrosCached == null) {
               Future.delayed(const Duration(milliseconds: 600), () async {
                 try {
                   await getRegistrosDiario(pacienteId, date: today);
-                } catch (e) {
-                }
+                } catch (e) {}
               });
             }
           }
           break;
-          
+
         case 'home_screen':
           if (userRole == 'admin') {
             final usersCached = await _cacheManager.get<List<dynamic>>(
@@ -1832,37 +1831,36 @@ class ApiService {
               negocioId,
               params: {'status': 'ativo'},
             );
-            
+
             if (usersCached == null) {
               Future.delayed(const Duration(milliseconds: 800), () async {
                 try {
-                  await getAllUsersInBusiness(status: 'ativo', forceRefresh: false);
-                } catch (e) {
-                }
+                  await getAllUsersInBusiness(
+                      status: 'ativo', forceRefresh: false);
+                } catch (e) {}
               });
             }
           }
           break;
-          
+
         case 'supervisor_diary':
           if (pacienteId != null) {
             Future.delayed(const Duration(milliseconds: 400), () async {
               try {
                 await getTecnicosSupervisionados(pacienteId);
-              } catch (e) {
-              }
+              } catch (e) {}
             });
           }
           break;
       }
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
-  Future<void> invalidateRelatedCache(String action, {String? pacienteId}) async {
+  Future<void> invalidateRelatedCache(String action,
+      {String? pacienteId}) async {
     final userId = _authService.currentUser?.id ?? 'anonymous';
     final negocioId = await _authService.getNegocioId() ?? 'default';
-    
+
     try {
       switch (action) {
         case 'patient_updated':
@@ -1872,16 +1870,15 @@ class ApiService {
               userId: userId,
               negocioId: negocioId,
             );
-            
+
             await _cacheManager.clear(
               pattern: 'getPacientes',
               userId: userId,
               negocioId: negocioId,
             );
-            
           }
           break;
-          
+
         case 'checklist_updated':
           if (pacienteId != null) {
             final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -1890,24 +1887,23 @@ class ApiService {
               userId: userId,
               negocioId: negocioId,
             );
-            
+
             await _cacheManager.clear(
               pattern: 'getFichaCompleta',
               userId: userId,
               negocioId: negocioId,
             );
-            
+
             await _cacheManager.clear(
               pattern: 'getFichaCompleta_pacienteId=$pacienteId',
               userId: userId,
               negocioId: negocioId,
             );
-            
+
             _cache.clear();
-            
           }
           break;
-          
+
         case 'registry_created':
           if (pacienteId != null) {
             final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -1916,29 +1912,28 @@ class ApiService {
               userId: userId,
               negocioId: negocioId,
             );
-            
           }
           break;
-          
+
         case 'user_role_updated':
           await _cacheManager.clear(
             pattern: 'getAllUsersInBusiness',
             userId: userId,
             negocioId: negocioId,
           );
-          
+
           break;
       }
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // --- SUPORTE PSICOLÓGICO ---
 
-  Future<List<SuportePsicologico>> getSuportePsicologico(String pacienteId, {bool forceRefresh = false}) async {
+  Future<List<SuportePsicologico>> getSuportePsicologico(String pacienteId,
+      {bool forceRefresh = false}) async {
     final userId = _authService.currentUser?.id ?? 'anonymous';
     final negocioId = await _authService.getNegocioId() ?? 'default';
-    
+
     if (!forceRefresh) {
       final cached = await _cacheManager.get<List<dynamic>>(
         'getSuportePsicologico',
@@ -1950,18 +1945,18 @@ class ApiService {
         return cached.map((json) => SuportePsicologico.fromJson(json)).toList();
       }
     }
-    
+
     final negocioIdQuery = await _authService.getNegocioId();
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/suporte-psicologico?negocio_id=$negocioIdQuery');
-    
-    
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/suporte-psicologico?negocio_id=$negocioIdQuery');
+
     final response = await http.get(uri, headers: await _getHeaders());
-    
-    
+
     if (response.statusCode == 200) {
       final List<dynamic> jsonData = json.decode(response.body);
-      final suportes = jsonData.map((json) => SuportePsicologico.fromJson(json)).toList();
-      
+      final suportes =
+          jsonData.map((json) => SuportePsicologico.fromJson(json)).toList();
+
       await _cacheManager.set(
         'getSuportePsicologico',
         jsonData,
@@ -1970,7 +1965,7 @@ class ApiService {
         params: {'pacienteId': pacienteId},
         ttl: const Duration(minutes: 5),
       );
-      
+
       return suportes;
     } else {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
@@ -1982,21 +1977,20 @@ class ApiService {
     Map<String, dynamic> data,
   ) async {
     final negocioId = await _authService.getNegocioId();
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/suporte-psicologico?negocio_id=$negocioId');
-    
-    
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/suporte-psicologico?negocio_id=$negocioId');
+
     final response = await http.post(
       uri,
       headers: await _getHeaders(),
       body: json.encode(data),
     );
-    
-    
+
     if (response.statusCode == 201) {
       final suporte = SuportePsicologico.fromJson(json.decode(response.body));
-      
+
       await invalidateSuportePsicologicoCache(pacienteId);
-      
+
       return suporte;
     } else {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
@@ -2009,35 +2003,34 @@ class ApiService {
     Map<String, dynamic> data,
   ) async {
     final negocioId = await _authService.getNegocioId();
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/suporte-psicologico/$suporteId?negocio_id=$negocioId');
-    
-    
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/suporte-psicologico/$suporteId?negocio_id=$negocioId');
+
     final response = await http.put(
       uri,
       headers: await _getHeaders(),
       body: json.encode(data),
     );
-    
-    
+
     if (response.statusCode == 200) {
       final suporte = SuportePsicologico.fromJson(json.decode(response.body));
-      
+
       await invalidateSuportePsicologicoCache(pacienteId);
-      
+
       return suporte;
     } else {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
     }
   }
 
-  Future<void> deleteSuportePsicologico(String pacienteId, String suporteId) async {
+  Future<void> deleteSuportePsicologico(
+      String pacienteId, String suporteId) async {
     final negocioId = await _authService.getNegocioId();
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/suporte-psicologico/$suporteId?negocio_id=$negocioId');
-    
-    
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/suporte-psicologico/$suporteId?negocio_id=$negocioId');
+
     final response = await http.delete(uri, headers: await _getHeaders());
-    
-    
+
     if (response.statusCode == 200 || response.statusCode == 204) {
       await invalidateSuportePsicologicoCache(pacienteId);
     } else {
@@ -2048,24 +2041,25 @@ class ApiService {
   Future<void> invalidateSuportePsicologicoCache(String pacienteId) async {
     final userId = _authService.currentUser?.id ?? 'anonymous';
     final negocioId = await _authService.getNegocioId() ?? 'default';
-    
+
     try {
       await _cacheManager.clear(
         pattern: 'getSuportePsicologico',
         userId: userId,
         negocioId: negocioId,
       );
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   // ================== RELATÓRIOS MÉDICOS ==================
 
-  Future<RelatorioMedico> createRelatorio(String pacienteId, String medicoId, {String? conteudo}) async {
+  Future<RelatorioMedico> createRelatorio(String pacienteId, String medicoId,
+      {String? conteudo}) async {
     final negocioId = await _authService.getNegocioId();
     if (negocioId == null) throw Exception('Negocio ID não encontrado.');
 
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/relatorios?negocio_id=$negocioId');
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/relatorios?negocio_id=$negocioId');
 
     final bodyMap = {
       'medico_id': medicoId,
@@ -2078,13 +2072,11 @@ class ApiService {
 
     final body = json.encode(bodyMap);
 
-
     final response = await http.post(
       uri,
       headers: await _getHeaders(),
       body: body,
     );
-
 
     if (response.statusCode == 201) {
       final Map<String, dynamic> jsonData = json.decode(response.body);
@@ -2097,23 +2089,26 @@ class ApiService {
   Future<List<RelatorioMedico>> getRelatoriosPaciente(String pacienteId) async {
     try {
       final negocioId = await _authService.getNegocioId();
-      final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/relatorios?negocio_id=$negocioId');
-      
+      final uri = Uri.parse(
+          '$_baseUrl/pacientes/$pacienteId/relatorios?negocio_id=$negocioId');
+
       final headers = await _getHeaders();
 
-      final response = await http.get(uri, headers: headers)
+      final response = await http
+          .get(uri, headers: headers)
           .timeout(const Duration(seconds: 30));
-      
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
         for (int i = 0; i < jsonList.length; i++) {
-          final fotosCount = (jsonList[i]['fotos'] as List<dynamic>?)?.length ?? 0;
+          final fotosCount =
+              (jsonList[i]['fotos'] as List<dynamic>?)?.length ?? 0;
         }
         return jsonList.map((json) => RelatorioMedico.fromJson(json)).toList();
       } else {
         if (response.statusCode == 500) {
-          throw Exception('Erro interno do servidor ao buscar relatórios. Tente novamente em alguns instantes.');
+          throw Exception(
+              'Erro interno do servidor ao buscar relatórios. Tente novamente em alguns instantes.');
         }
         throw Exception(ErrorHandler.getApiErrorMessage(response));
       }
@@ -2126,7 +2121,8 @@ class ApiService {
     final negocioId = await _authService.getNegocioId();
     if (negocioId == null) throw Exception('Negocio ID não encontrado.');
 
-    debugPrint('[FOTO_DEBUG] 📸 Iniciando upload de ${fotos.length} fotos para relatório $relatorioId');
+    debugPrint(
+        '[FOTO_DEBUG] 📸 Iniciando upload de ${fotos.length} fotos para relatório $relatorioId');
     final uri = Uri.parse('$_baseUrl/relatorios/$relatorioId/fotos');
 
     final request = http.MultipartRequest('POST', uri);
@@ -2147,17 +2143,20 @@ class ApiService {
           'files', // Nome do campo esperado pelo backend
           bytes,
           filename: foto.name,
-          contentType: MediaType('image', 'jpeg'), // Ajuste o tipo se for o caso (png, etc)
+          contentType: MediaType(
+              'image', 'jpeg'), // Ajuste o tipo se for o caso (png, etc)
         );
         request.files.add(file);
-        debugPrint('[FOTO_DEBUG] ✅ Foto ${i + 1} adicionada com sucesso (${file.length} bytes)');
+        debugPrint(
+            '[FOTO_DEBUG] ✅ Foto ${i + 1} adicionada com sucesso (${file.length} bytes)');
       } catch (e) {
         debugPrint('[FOTO_DEBUG] ❌ Erro ao adicionar foto ${i + 1}: $e');
       }
     }
 
     if (request.files.isEmpty) {
-      debugPrint('[FOTO_DEBUG] ⚠️ Nenhuma foto foi adicionada. Abortando upload.');
+      debugPrint(
+          '[FOTO_DEBUG] ⚠️ Nenhuma foto foi adicionada. Abortando upload.');
       // Opcional: Lançar um erro ou retornar informando que não há fotos
       // throw Exception('Nenhuma foto selecionada ou válida para upload.');
       return;
@@ -2171,7 +2170,8 @@ class ApiService {
     debugPrint('[FOTO_DEBUG] 📥 Response: $responseBody');
 
     if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception('Erro ao adicionar fotos: ${response.statusCode} - $responseBody');
+      throw Exception(
+          'Erro ao adicionar fotos: ${response.statusCode} - $responseBody');
     }
 
     debugPrint('[FOTO_DEBUG] ✅ Upload concluído com sucesso!');
@@ -2185,8 +2185,7 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final List<dynamic> jsonList = json.decode(response.body);
-      for (int i = 0; i < jsonList.length; i++) {
-      }
+      for (int i = 0; i < jsonList.length; i++) {}
       return jsonList.map((json) => RelatorioMedico.fromJson(json)).toList();
     } else {
       throw Exception(ErrorHandler.getApiErrorMessage(response));
@@ -2198,7 +2197,7 @@ class ApiService {
     if (status != null && status.isNotEmpty) {
       endpoint += '?status=$status';
     }
-    
+
     final uri = Uri.parse(endpoint);
     final headers = await _getHeaders();
 
@@ -2212,7 +2211,8 @@ class ApiService {
       }
 
       // Converter JSON para objetos e ordenar por data (mais recente primeiro)
-      final relatorios = jsonList.map((json) => RelatorioMedico.fromJson(json)).toList();
+      final relatorios =
+          jsonList.map((json) => RelatorioMedico.fromJson(json)).toList();
       relatorios.sort((a, b) => b.dataCriacao.compareTo(a.dataCriacao));
       return relatorios;
     } else {
@@ -2268,14 +2268,17 @@ class ApiService {
 
     // Notificar enfermeiro sobre recusa do relatório
     try {
-      await _notificarEnfermeiroAvaliacaoRelatorio(relatorioId, 'recusado', motivo);
+      await _notificarEnfermeiroAvaliacaoRelatorio(
+          relatorioId, 'recusado', motivo);
     } catch (e) {
       debugPrint('⚠️ Erro ao notificar enfermeiro sobre recusa: $e');
       // Falha silenciosa - não deve impedir a recusa
     }
   }
 
-  Future<void> _notificarEnfermeiroAvaliacaoRelatorio(String relatorioId, String status, [String? motivo]) async {
+  Future<void> _notificarEnfermeiroAvaliacaoRelatorio(
+      String relatorioId, String status,
+      [String? motivo]) async {
     debugPrint('🔔 Notificando enfermeiro sobre avaliação de relatório');
     debugPrint('   Relatório ID: $relatorioId');
     debugPrint('   Status: $status');
@@ -2284,16 +2287,19 @@ class ApiService {
     try {
       // Buscar dados do relatório para obter paciente e enfermeiro
       final relatorioUri = Uri.parse('$_baseUrl/relatorios/$relatorioId');
-      final relatorioResponse = await http.get(relatorioUri, headers: await _getHeaders());
+      final relatorioResponse =
+          await http.get(relatorioUri, headers: await _getHeaders());
 
       if (relatorioResponse.statusCode != 200) {
-        debugPrint('❌ Erro ao buscar dados do relatório: ${relatorioResponse.statusCode}');
+        debugPrint(
+            '❌ Erro ao buscar dados do relatório: ${relatorioResponse.statusCode}');
         return;
       }
 
       final relatorioData = json.decode(relatorioResponse.body);
       final pacienteId = relatorioData['paciente_id'] as String?;
-      final pacienteNome = relatorioData['paciente_nome'] as String? ?? 'Paciente';
+      final pacienteNome =
+          relatorioData['paciente_nome'] as String? ?? 'Paciente';
 
       if (pacienteId == null) {
         debugPrint('❌ Paciente ID não encontrado no relatório');
@@ -2302,11 +2308,14 @@ class ApiService {
 
       // Buscar dados do paciente para obter enfermeiro
       final negocioId = await _authService.getNegocioId();
-      final pacienteUri = Uri.parse('$_baseUrl/usuarios/$pacienteId?negocio_id=$negocioId');
-      final pacienteResponse = await http.get(pacienteUri, headers: await _getHeaders());
+      final pacienteUri =
+          Uri.parse('$_baseUrl/usuarios/$pacienteId?negocio_id=$negocioId');
+      final pacienteResponse =
+          await http.get(pacienteUri, headers: await _getHeaders());
 
       if (pacienteResponse.statusCode != 200) {
-        debugPrint('❌ Erro ao buscar dados do paciente: ${pacienteResponse.statusCode}');
+        debugPrint(
+            '❌ Erro ao buscar dados do paciente: ${pacienteResponse.statusCode}');
         return;
       }
 
@@ -2314,7 +2323,8 @@ class ApiService {
       final enfermeiroId = pacienteData['enfermeiro_id'] as String?;
 
       if (enfermeiroId == null || enfermeiroId.isEmpty) {
-        debugPrint('⚠️ Paciente não possui enfermeiro vinculado - pulando notificação');
+        debugPrint(
+            '⚠️ Paciente não possui enfermeiro vinculado - pulando notificação');
         return;
       }
 
@@ -2327,10 +2337,12 @@ class ApiService {
 
       if (status == 'aprovado') {
         titulo = 'Relatório Aprovado';
-        mensagem = 'Seu relatório do paciente $pacienteNome foi aprovado pelo médico';
+        mensagem =
+            'Seu relatório do paciente $pacienteNome foi aprovado pelo médico';
       } else {
         titulo = 'Relatório Recusado';
-        mensagem = 'Seu relatório do paciente $pacienteNome foi recusado pelo médico';
+        mensagem =
+            'Seu relatório do paciente $pacienteNome foi recusado pelo médico';
         if (motivo != null && motivo.isNotEmpty) {
           mensagem += '. Motivo: $motivo';
         }
@@ -2359,13 +2371,14 @@ class ApiService {
         body: json.encode(notificacaoPayload),
       );
 
-      if (notificacaoResponse.statusCode == 201 || notificacaoResponse.statusCode == 200) {
+      if (notificacaoResponse.statusCode == 201 ||
+          notificacaoResponse.statusCode == 200) {
         debugPrint('✅ Notificação enviada com sucesso para enfermeiro');
       } else {
-        debugPrint('❌ Erro ao criar notificação: ${notificacaoResponse.statusCode}');
+        debugPrint(
+            '❌ Erro ao criar notificação: ${notificacaoResponse.statusCode}');
         debugPrint('   Response body: ${notificacaoResponse.body}');
       }
-
     } catch (e) {
       debugPrint('❌ Erro ao notificar enfermeiro sobre avaliação: $e');
       // Não fazer rethrow para não quebrar o fluxo principal
@@ -2383,7 +2396,7 @@ class ApiService {
     if (response.statusCode == 200) {
       final List<dynamic> jsonList = json.decode(response.body);
       final usuarios = jsonList.map((json) => Usuario.fromJson(json)).toList();
-      
+
       final medicos = usuarios.where((usuario) {
         final userRoles = usuario.roles;
         if (userRoles != null && userRoles.containsKey(negocioId)) {
@@ -2392,11 +2405,11 @@ class ApiService {
         }
         return false;
       }).toList();
-      
+
       for (var medico in medicos) {
         final role = medico.roles?[negocioId] ?? 'N/A';
       }
-      
+
       return medicos;
     } else if (response.statusCode == 404 || response.statusCode == 422) {
       return <Usuario>[];
@@ -2410,7 +2423,7 @@ class ApiService {
   Future<List<Notificacao>> getNotificacoes({bool forceRefresh = false}) async {
     final userId = _authService.currentUser?.id ?? 'anonymous';
     final negocioId = await _authService.getNegocioId() ?? 'default';
-    
+
     if (!forceRefresh) {
       final cached = await _cacheManager.get<List<dynamic>>(
         'getNotificacoes',
@@ -2429,7 +2442,8 @@ class ApiService {
       final List<dynamic> jsonList = json.decode(response.body);
       debugPrint('📦 [API] Recebido ${jsonList.length} notificações');
 
-      final notificacoes = jsonList.map((json) => Notificacao.fromJson(json)).toList();
+      final notificacoes =
+          jsonList.map((json) => Notificacao.fromJson(json)).toList();
 
       await _cacheManager.set(
         'getNotificacoes',
@@ -2541,7 +2555,8 @@ class ApiService {
     }
   }
 
-  Future<void> _agendarLembreteExame(String pacienteId, Map<String, dynamic> examData) async {
+  Future<void> _agendarLembreteExame(
+      String pacienteId, Map<String, dynamic> examData) async {
     try {
       print('🔔 INICIANDO AGENDAMENTO DE NOTIFICAÇÃO DE EXAME');
       print('   Paciente ID: $pacienteId');
@@ -2623,11 +2638,11 @@ class ApiService {
       print('   Notificação no futuro? ${dataNotificacao.isAfter(agora)}');
 
       if (dataNotificacao.isAfter(agora)) {
-        final horarioFormatado = horarioExame?.isNotEmpty == true
-          ? ' às $horarioExame'
-          : '';
+        final horarioFormatado =
+            horarioExame?.isNotEmpty == true ? ' às $horarioExame' : '';
 
-        final mensagem = 'Lembrete: Você tem o exame "$nomeExame" agendado para amanhã$horarioFormatado. Não se esqueça!';
+        final mensagem =
+            'Lembrete: Você tem o exame "$nomeExame" agendado para amanhã$horarioFormatado. Não se esqueça!';
 
         print('   Enviando para API...');
         print('   Título: Lembrete de Exame');
@@ -2652,20 +2667,20 @@ class ApiService {
     }
   }
 
-  Future<TarefaAgendada> createTarefa(String pacienteId, Map<String, dynamic> data) async {
-    
+  Future<TarefaAgendada> createTarefa(
+      String pacienteId, Map<String, dynamic> data) async {
     final negocioId = await _authService.getNegocioId();
-    final uri = Uri.parse('$_baseUrl/pacientes/$pacienteId/tarefas?negocio_id=$negocioId');
-    
+    final uri = Uri.parse(
+        '$_baseUrl/pacientes/$pacienteId/tarefas?negocio_id=$negocioId');
+
     try {
       final headers = await _getHeaders();
-      
+
       final response = await http.post(
         uri,
         headers: headers,
         body: json.encode(data),
       );
-
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return TarefaAgendada.fromJson(json.decode(response.body));
@@ -2678,21 +2693,21 @@ class ApiService {
     }
   }
 
-  Future<List<TarefaAgendada>> getTarefas(String pacienteId, {String? status}) async {
+  Future<List<TarefaAgendada>> getTarefas(String pacienteId,
+      {String? status}) async {
     final negocioId = await _authService.getNegocioId();
-    String url = '$_baseUrl/pacientes/$pacienteId/tarefas?negocio_id=$negocioId';
+    String url =
+        '$_baseUrl/pacientes/$pacienteId/tarefas?negocio_id=$negocioId';
     if (status != null && status.isNotEmpty) {
       url += '&status=$status';
     }
 
-
     final uri = Uri.parse(url);
-    
+
     try {
       final headers = await _getHeaders();
-      
+
       final response = await http.get(uri, headers: headers);
-      
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
@@ -2733,18 +2748,47 @@ class ApiService {
       final response = await http.post(url, headers: headers, body: body);
 
       if (response.statusCode == 200) {
-        debugPrint('✅ LOGOUT_DEBUG: Token desvinculado com sucesso no backend.');
+        debugPrint(
+            '✅ LOGOUT_DEBUG: Token desvinculado com sucesso no backend.');
       } else {
-        debugPrint('⚠️ LOGOUT_DEBUG: Falha ao desvincular token no backend. Status: ${response.statusCode}, Body: ${response.body}');
+        debugPrint(
+            '⚠️ LOGOUT_DEBUG: Falha ao desvincular token no backend. Status: ${response.statusCode}, Body: ${response.body}');
       }
     } catch (e) {
       // Ignora erros de header (usuário já pode estar deslogado) e de rede para não travar o logout
       if (e.toString().contains('User not authenticated')) {
-         debugPrint('⚠️ LOGOUT_DEBUG: Usuário já deslogado do Firebase, pulando chamada de desvinculação de token.');
+        debugPrint(
+            '⚠️ LOGOUT_DEBUG: Usuário já deslogado do Firebase, pulando chamada de desvinculação de token.');
       } else {
-        debugPrint('❌ LOGOUT_DEBUG: Erro de rede ao tentar desvincular token: $e');
+        debugPrint(
+            '❌ LOGOUT_DEBUG: Erro de rede ao tentar desvincular token: $e');
       }
     }
   }
 
+  // ================== ASSOCIAÇÕES DINÂMICAS DE PERFIS ==================
+
+  Future<void> managePatientAssociation(
+    String patientId,
+    String roleType,
+    List<String> professionalIds,
+  ) async {
+    final url =
+        Uri.parse('$_baseUrl/pacientes/$patientId/associations/$roleType');
+
+    final response = await http.patch(
+      url,
+      headers: await _getHeaders(),
+      body: jsonEncode({
+        'professional_ids': professionalIds,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(ErrorHandler.getApiErrorMessage(response));
+    }
+
+    clearCache('getAllUsersInBusiness');
+    clearCache('getPacientes');
+  }
 }

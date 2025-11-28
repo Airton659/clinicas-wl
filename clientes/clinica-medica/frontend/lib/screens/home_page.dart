@@ -85,8 +85,9 @@ class _HomePageState extends State<HomePage>
         if (mounted) {
           // Chama o método que já existe para recarregar os dados
           _reloadData(forceRefresh: true);
-           // Atualiza o contador de notificações no ícone do sino
-          Provider.of<NotificationProvider>(context, listen: false).loadNotifications(forceRefresh: true);
+          // Atualiza o contador de notificações no ícone do sino
+          Provider.of<NotificationProvider>(context, listen: false)
+              .loadNotifications(forceRefresh: true);
         }
       }
     });
@@ -175,7 +176,8 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _loadRoleNames() async {
     try {
-      final permissionsProvider = Provider.of<PermissionsProvider>(context, listen: false);
+      final permissionsProvider =
+          Provider.of<PermissionsProvider>(context, listen: false);
       await permissionsProvider.carregarRoles("rlAB6phw0EBsBFeDyOt6");
 
       if (mounted) {
@@ -391,7 +393,10 @@ class _HomePageState extends State<HomePage>
           ),
         ),
         // BOTÃO SUPER ADMIN (visível apenas para role="platform")
-        if (Provider.of<AuthService>(context, listen: false).currentUser?.isSuperAdmin ?? false)
+        if (Provider.of<AuthService>(context, listen: false)
+                .currentUser
+                ?.isSuperAdmin ??
+            false)
           Container(
             margin: const EdgeInsets.only(right: 8),
             child: IconButton(
@@ -482,6 +487,54 @@ class _HomePageState extends State<HomePage>
     );
   }
 
+  List<_AlertCard> _buildDynamicAlerts(List<Usuario> allUsers) {
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
+    final List<_AlertCard> alerts = [];
+
+    // Filtra pacientes
+    final patients = allUsers
+        .where((u) => !u.isSuperAdmin && u.roles?[negocioId] == 'cliente')
+        .toList();
+
+    // Filtra perfis customizados (não system)
+    final customRoles = _rolesCache.values.where((r) => !r.isSystem).toList();
+
+    for (var role in customRoles) {
+      if (role.id == null) continue;
+
+      // Conta pacientes sem associação para este perfil
+      final count =
+          patients.where((p) => p.getAssociationCount(role.id!) == 0).length;
+
+      if (count > 0) {
+        alerts.add(
+          _AlertCard(
+            title: 'Pacientes sem ${role.nomeCustomizado}',
+            count: count,
+            icon: _getIconFromString(role.icone),
+            color: _getColorFromHex(role.cor),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PatientListPage(
+                    filterByMissingAssociation: role.id,
+                  ),
+                ),
+              ).then((_) async {
+                await Future.delayed(const Duration(milliseconds: 100));
+                if (mounted) {
+                  _reloadData(forceRefresh: true);
+                }
+              });
+            },
+          ),
+        );
+      }
+    }
+    return alerts;
+  }
+
   Widget _buildAdminContent(List<Usuario> allUsers) {
     const negocioId = "rlAB6phw0EBsBFeDyOt6";
 
@@ -492,8 +545,9 @@ class _HomePageState extends State<HomePage>
     debugPrint('🗂️  _rolesCache: ${_rolesCache.keys.toList()}');
 
     // Sempre mostra pacientes
-    final totalPacientes =
-        allUsers.where((u) => !u.isSuperAdmin && u.roles?[negocioId] == 'cliente').length;
+    final totalPacientes = allUsers
+        .where((u) => !u.isSuperAdmin && u.roles?[negocioId] == 'cliente')
+        .length;
 
     // Contadores dinâmicos baseados nos perfis que existem
     Map<String, int> roleCount = {};
@@ -503,40 +557,15 @@ class _HomePageState extends State<HomePage>
 
     // Adiciona contadores para roles customizadas
     for (var roleType in _rolesCache.keys) {
-      roleCount[roleType] = allUsers.where((u) => !u.isSuperAdmin && u.roles?[negocioId] == roleType).length;
+      roleCount[roleType] = allUsers
+          .where((u) => !u.isSuperAdmin && u.roles?[negocioId] == roleType)
+          .length;
     }
 
     debugPrint('📈 roleCount calculado: $roleCount');
     debugPrint('═══════════════════════════════════════════════════════════');
 
-    final pacientesSemEnfermeiro = allUsers
-        .where((u) =>
-            !u.isSuperAdmin &&
-            u.roles?[negocioId] == 'cliente' &&
-            (u.enfermeiroId == null || u.enfermeiroId!.isEmpty))
-        .length;
-
-    // Pacientes sem técnico: clientes que não têm técnicos vinculados
-    final pacientesSemTecnico = allUsers
-        .where((u) =>
-            !u.isSuperAdmin &&
-            u.roles?[negocioId] == 'cliente' &&
-            (u.tecnicosIds == null || u.tecnicosIds!.isEmpty))
-        .length;
-
-    final pacientesSemMedico = allUsers
-        .where((u) =>
-            !u.isSuperAdmin &&
-            u.roles?[negocioId] == 'cliente' &&
-            (u.medicoId == null || u.medicoId!.isEmpty))
-        .length;
-
-    final tecnicosSemSupervisor = allUsers
-        .where((u) =>
-            !u.isSuperAdmin &&
-            u.roles?[negocioId] == 'tecnico' &&
-            (u.supervisor_id == null || u.supervisor_id!.isEmpty))
-        .length;
+    final dynamicAlerts = _buildDynamicAlerts(allUsers);
 
     return AnimatedBuilder(
       animation: _cardsAnimationController,
@@ -548,7 +577,8 @@ class _HomePageState extends State<HomePage>
             children: [
               _buildSectionHeader('Visão Geral', Icons.dashboard_rounded),
               const SizedBox(height: 16),
-              _buildStatsGrid(_buildDynamicRoleCards(roleCount, totalPacientes)),
+              _buildStatsGrid(
+                  _buildDynamicRoleCards(roleCount, totalPacientes)),
               const SizedBox(height: 32),
               _buildSectionHeader(
                   'Alertas e Pendências', Icons.warning_amber_rounded),
@@ -601,100 +631,8 @@ class _HomePageState extends State<HomePage>
                     ],
                   ),
                 ),
-              ] else if (pacientesSemEnfermeiro > 0 ||
-                  pacientesSemTecnico > 0 ||
-                  pacientesSemMedico > 0 ||
-                  tecnicosSemSupervisor > 0) ...[
-                _buildAlertsGrid([
-                  if (pacientesSemEnfermeiro > 0)
-                    _AlertCard(
-                      title: 'Pacientes sem Enfermeiro',
-                      count: pacientesSemEnfermeiro,
-                      icon: Icons.person_off_rounded,
-                      color: AppTheme.warningOrange,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => TeamManagementPage(
-                              initialRoleFilter: 'cliente',
-                              showOnlyPatientsWithoutNurse: true,
-                            ),
-                          ),
-                        ).then((_) async {
-                          // Recarrega dados quando volta da tela de gerenciamento
-                          await Future.delayed(
-                              const Duration(milliseconds: 100));
-                          if (mounted) {
-                            _reloadData(forceRefresh: true);
-                          }
-                        });
-                      },
-                    ),
-                  if (pacientesSemTecnico > 0)
-                    _AlertCard(
-                      title: 'Pacientes sem Técnico',
-                      count: pacientesSemTecnico,
-                      icon: Icons.person_off_rounded,
-                      color: AppTheme.accentTeal,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => TeamManagementPage(
-                              initialRoleFilter: 'cliente',
-                              showOnlyPatientsWithoutTechnician: true,
-                            ),
-                          ),
-                        ).then((_) {
-                          _reloadData(forceRefresh: true);
-                        });
-                      },
-                    ),
-                  if (pacientesSemMedico > 0)
-                    _AlertCard(
-                      title: 'Pacientes sem Médico',
-                      count: pacientesSemMedico,
-                      icon: Icons.person_off_rounded,
-                      color: const Color(0xFF9C27B0), // Roxo igual aos médicos
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => TeamManagementPage(
-                              initialRoleFilter: 'cliente',
-                              showOnlyPatientsWithoutDoctor: true,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  if (tecnicosSemSupervisor > 0)
-                    _AlertCard(
-                      title: 'Técnicos sem Supervisor',
-                      count: tecnicosSemSupervisor,
-                      icon: Icons.supervisor_account_rounded,
-                      color: AppTheme.errorRed,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => TeamManagementPage(
-                              initialRoleFilter: 'tecnico',
-                              showOnlyTechniciansWithoutSupervisor: true,
-                            ),
-                          ),
-                        ).then((_) async {
-                          // Recarrega dados quando volta da tela de gerenciamento
-                          await Future.delayed(
-                              const Duration(milliseconds: 100));
-                          if (mounted) {
-                            _reloadData(forceRefresh: true);
-                          }
-                        });
-                      },
-                    ),
-                ]),
+              ] else if (dynamicAlerts.isNotEmpty) ...[
+                _buildAlertsGrid(dynamicAlerts),
               ] else ...[
                 ModernCard(
                   hasGradient: true,
@@ -872,7 +810,8 @@ class _HomePageState extends State<HomePage>
     };
 
     final result = iconMap[iconeName] ?? Icons.people_alt_rounded;
-    debugPrint('   → Resultado: ${result == Icons.people_alt_rounded ? "DEFAULT (not found)" : "FOUND"}');
+    debugPrint(
+        '   → Resultado: ${result == Icons.people_alt_rounded ? "DEFAULT (not found)" : "FOUND"}');
 
     return result;
   }
@@ -890,7 +829,8 @@ class _HomePageState extends State<HomePage>
     }
   }
 
-  List<_StatCard> _buildDynamicRoleCards(Map<String, int> roleCount, int totalPacientes) {
+  List<_StatCard> _buildDynamicRoleCards(
+      Map<String, int> roleCount, int totalPacientes) {
     List<_StatCard> cards = [];
 
     for (var entry in roleCount.entries) {
@@ -910,7 +850,8 @@ class _HomePageState extends State<HomePage>
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => TeamManagementPage(initialRoleFilter: 'cliente'),
+              builder: (context) =>
+                  TeamManagementPage(initialRoleFilter: 'cliente'),
             ),
           ),
         ));
@@ -930,7 +871,8 @@ class _HomePageState extends State<HomePage>
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => TeamManagementPage(initialRoleFilter: roleType),
+              builder: (context) =>
+                  TeamManagementPage(initialRoleFilter: roleType),
             ),
           ),
         ));
@@ -1115,7 +1057,10 @@ class _HomePageState extends State<HomePage>
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [action.color, action.color.withOpacity(0.8)],
+                            colors: [
+                              action.color,
+                              action.color.withOpacity(0.8)
+                            ],
                           ),
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -1221,7 +1166,7 @@ class _HomePageState extends State<HomePage>
               // AGORA SIM, COM O CAMPO CORRETO
               ModernAvatar(
                 name: displayName,
-                imageUrl: imageUrl, 
+                imageUrl: imageUrl,
                 radius: 28,
               ),
               const SizedBox(width: 16),
@@ -1352,7 +1297,8 @@ class _HomePageState extends State<HomePage>
               child: Icon(
                 Icons.health_and_safety_outlined,
                 size: 14,
-                color: isInactive ? AppTheme.neutralGray400 : AppTheme.primaryBlue,
+                color:
+                    isInactive ? AppTheme.neutralGray400 : AppTheme.primaryBlue,
               ),
             ),
             const SizedBox(width: 8),
@@ -1360,7 +1306,8 @@ class _HomePageState extends State<HomePage>
               'Enfermeiro vinculado',
               style: TextStyle(
                 fontSize: 12,
-                color: isInactive ? AppTheme.neutralGray400 : AppTheme.primaryBlue,
+                color:
+                    isInactive ? AppTheme.neutralGray400 : AppTheme.primaryBlue,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1390,8 +1337,9 @@ class _HomePageState extends State<HomePage>
               child: Icon(
                 Icons.medical_services_outlined,
                 size: 14,
-                color:
-                    isInactive ? AppTheme.neutralGray400 : AppTheme.successGreen,
+                color: isInactive
+                    ? AppTheme.neutralGray400
+                    : AppTheme.successGreen,
               ),
             ),
             const SizedBox(width: 8),
@@ -1399,8 +1347,9 @@ class _HomePageState extends State<HomePage>
               '${patient.tecnicosIds!.length} técnico${patient.tecnicosIds!.length > 1 ? 's' : ''} vinculado${patient.tecnicosIds!.length > 1 ? 's' : ''}',
               style: TextStyle(
                 fontSize: 12,
-                color:
-                    isInactive ? AppTheme.neutralGray400 : AppTheme.successGreen,
+                color: isInactive
+                    ? AppTheme.neutralGray400
+                    : AppTheme.successGreen,
                 fontWeight: FontWeight.w500,
               ),
             ),

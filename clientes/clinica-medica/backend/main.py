@@ -459,8 +459,46 @@ def vincular_ou_desvincular_supervisor( # Nome alterado para clareza
 
 
 # =================================================================================
+# ENDPOINTS DE ASSOCIAÇÕES DINÂMICAS DE PERFIS
+# =================================================================================
+
+def get_negocio_id_from_user(current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase)) -> str:
+    if not current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usuário não possui negócio associado"
+        )
+    return list(current_user.roles.keys())[0]
+
+@app.patch("/pacientes/{patient_id}/associations/{role_type}", tags=["Associações de Perfis"])
+@require_permission("patients.update")
+async def update_patient_associations(
+    patient_id: str,
+    role_type: str,
+    association_data: schemas.AssociationUpdate,
+    current_user: schemas.UsuarioProfile = Depends(get_current_user_firebase),
+    negocio_id: str = Depends(get_negocio_id_from_user),
+    db: firestore.client = Depends(get_db)
+):
+    """
+    Atualiza as associações de um paciente com profissionais de um determinado perfil (role_type).
+    """
+    logger.info(f"DEBUG ASSOCIATIONS: roles={current_user.roles} uid={current_user.firebase_uid} negocio_id={negocio_id}")
+
+    result = crud.manage_patient_associations(
+        db=db,
+        negocio_id=negocio_id,
+        patient_id=patient_id,
+        role_type=role_type,
+        professional_ids=association_data.professional_ids
+    )
+    return result
+
+
+# =================================================================================
 # ENDPOINTS DA FICHA DO PACIENTE (Módulo Clínico)
 # =================================================================================
+
 
 @app.post("/pacientes/{paciente_id}/consultas", response_model=schemas.ConsultaResponse, status_code=status.HTTP_201_CREATED, tags=["Ficha do Paciente"])
 @require_permission("appointments.create")

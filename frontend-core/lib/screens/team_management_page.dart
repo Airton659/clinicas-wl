@@ -54,20 +54,23 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
   /// Carrega permissões do usuário atual
   void _loadUserPermissions() {
     final authService = Provider.of<AuthService>(context, listen: false);
-    final permissionsProvider = Provider.of<PermissionsProvider>(context, listen: false);
+    final permissionsProvider =
+        Provider.of<PermissionsProvider>(context, listen: false);
     final currentUser = authService.currentUser;
 
     if (currentUser != null && currentUser.id != null) {
       const negocioId = "rlAB6phw0EBsBFeDyOt6"; // ID do negócio
       permissionsProvider.carregarPermissoesUsuario(negocioId, currentUser.id!);
-      print('🔐 Carregando permissões do usuário ${currentUser.email} no negócio $negocioId');
+      print(
+          '🔐 Carregando permissões do usuário ${currentUser.email} no negócio $negocioId');
     }
   }
 
   /// Carrega roles disponíveis do sistema RBAC
   void _loadAvailableRoles() async {
     const negocioId = "rlAB6phw0EBsBFeDyOt6";
-    final permissionsProvider = Provider.of<PermissionsProvider>(context, listen: false);
+    final permissionsProvider =
+        Provider.of<PermissionsProvider>(context, listen: false);
 
     try {
       await permissionsProvider.carregarRoles(negocioId);
@@ -78,25 +81,30 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
             .where((role) => role.tipo != 'admin')
             .toList();
       });
-      print('📋 Roles carregados: ${_availableRoles.map((r) => r.tipo).toList()}');
+      print(
+          '📋 Roles carregados: ${_availableRoles.map((r) => r.tipo).toList()}');
     } catch (e) {
       print('❌ Erro ao carregar roles: $e');
     }
   }
 
   void _fetchAndCacheUsers({bool forceRefresh = false}) {
-    print('📡 TeamManagementPage: _fetchAndCacheUsers chamado (forceRefresh: $forceRefresh)');
+    print(
+        '📡 TeamManagementPage: _fetchAndCacheUsers chamado (forceRefresh: $forceRefresh)');
     final apiService = Provider.of<ApiService>(context, listen: false);
 
     // Otimização: Só busca 'todos' se o filtro for 'Todos' ou 'Inativos'
     final apiStatusFilter = (_statusFilter == 'ativo') ? 'ativo' : 'all';
 
     setState(() {
-      _usersFuture = apiService.getAllUsersInBusiness(
+      _usersFuture = apiService
+          .getAllUsersInBusiness(
         status: apiStatusFilter,
         forceRefresh: forceRefresh,
-      ).then((users) {
-        print('📥 TeamManagementPage: Recebidos ${users.length} usuários da API');
+      )
+          .then((users) {
+        print(
+            '📥 TeamManagementPage: Recebidos ${users.length} usuários da API');
         _allUsers = users;
         _filterUsers();
         return users;
@@ -111,7 +119,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
     print('🔍 TeamManagementPage: _filterUsers chamado');
     print('   Total usuários: ${_allUsers.length}');
-    print('   showOnlyPatientsWithoutTechnician: ${widget.showOnlyPatientsWithoutTechnician}');
+    print(
+        '   showOnlyPatientsWithoutTechnician: ${widget.showOnlyPatientsWithoutTechnician}');
 
     setState(() {
       _filteredUsers = _allUsers.where((user) {
@@ -120,9 +129,10 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
         // Filtro por Papel
         final userRole = user.roles?[negocioId];
-        final roleMatch = _activeRoleFilter == null || userRole == _activeRoleFilter;
+        final roleMatch =
+            _activeRoleFilter == null || userRole == _activeRoleFilter;
         if (!roleMatch) return false;
-        
+
         // Filtro por Status (local)
         final userStatus = user.status_por_negocio?[negocioId];
         if (_statusFilter == 'ativo' && userStatus == 'inativo') {
@@ -136,7 +146,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
         if (widget.showOnlyPatientsWithoutNurse == true) {
           // Só mostra clientes/pacientes que não têm enfermeiro vinculado
           final isPatient = user.roles?[negocioId] == 'cliente';
-          final hasNoNurse = user.enfermeiroId == null || user.enfermeiroId!.isEmpty;
+          final hasNoNurse =
+              user.enfermeiroId == null || user.enfermeiroId!.isEmpty;
           if (!isPatient || !hasNoNurse) {
             return false;
           }
@@ -146,9 +157,11 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
         if (widget.showOnlyPatientsWithoutTechnician == true) {
           final isPatient = user.roles?[negocioId] == 'cliente';
           // CORREÇÃO: Verificar se o próprio paciente tem técnicos vinculados
-          final pacienteTemTecnico = user.tecnicosIds != null && user.tecnicosIds!.isNotEmpty;
+          final pacienteTemTecnico =
+              user.tecnicosIds != null && user.tecnicosIds!.isNotEmpty;
 
-          print('   🏥 Paciente ${user.nome}: isPatient=$isPatient, temTecnico=$pacienteTemTecnico');
+          print(
+              '   🏥 Paciente ${user.nome}: isPatient=$isPatient, temTecnico=$pacienteTemTecnico');
           print('     paciente.tecnicosIds=${user.tecnicosIds}');
 
           if (!isPatient || pacienteTemTecnico) {
@@ -169,7 +182,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
         if (widget.showOnlyTechniciansWithoutSupervisor == true) {
           // Só mostra técnicos que não têm supervisor vinculado
           final isTechnician = user.roles?[negocioId] == 'tecnico';
-          final hasNoSupervisor = user.supervisor_id == null || user.supervisor_id!.isEmpty;
+          final hasNoSupervisor =
+              user.supervisor_id == null || user.supervisor_id!.isEmpty;
           if (!isTechnician || !hasNoSupervisor) {
             return false;
           }
@@ -181,11 +195,12 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
           final emailMatch = user.email?.toLowerCase().contains(query) ?? false;
           return nameMatch || emailMatch;
         }
-        
+
         return true;
       }).toList();
 
-      print('📊 TeamManagementPage: Filtro final - ${_filteredUsers.length} usuários exibidos');
+      print(
+          '📊 TeamManagementPage: Filtro final - ${_filteredUsers.length} usuários exibidos');
       for (final user in _filteredUsers) {
         print('   - ${user.nome} (${user.roles?["rlAB6phw0EBsBFeDyOt6"]})');
       }
@@ -284,7 +299,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                   child: const Text('Salvar'),
                   onPressed: () async {
                     if (user.id == null) return;
-                    final apiService = Provider.of<ApiService>(context, listen: false);
+                    final apiService =
+                        Provider.of<ApiService>(context, listen: false);
                     try {
                       await apiService.updateUserRole(user.id!, selectedRole!);
                       if (mounted) {
@@ -294,7 +310,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                           _activeRoleFilter = null;
                         });
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Papel alterado com sucesso!')),
+                          const SnackBar(
+                              content: Text('Papel alterado com sucesso!')),
                         );
                         _reloadData();
                       }
@@ -302,7 +319,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                       if (mounted) {
                         Navigator.of(context).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erro ao alterar o papel: $e')),
+                          SnackBar(
+                              content: Text('Erro ao alterar o papel: $e')),
                         );
                       }
                     }
@@ -319,19 +337,25 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
   Future<void> _showUpdateStatusDialog(Usuario user, String newStatus) async {
     final isActivating = newStatus == 'ativo';
     final title = isActivating ? 'Reativar Usuário' : 'Inativar Usuário';
-    final content = 'Tem certeza que deseja ${isActivating ? 'reativar' : 'inativar'} o usuário ${user.email}?';
+    final content =
+        'Tem certeza que deseja ${isActivating ? 'reativar' : 'inativar'} o usuário ${user.email}?';
 
     final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text(isActivating ? 'Reativar' : 'Inativar')),
-        ],
-      ),
-    ) ?? false;
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(title),
+            content: Text(content),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancelar')),
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(isActivating ? 'Reativar' : 'Inativar')),
+            ],
+          ),
+        ) ??
+        false;
 
     if (confirmed && mounted) {
       if (user.id == null) return;
@@ -339,7 +363,9 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
       try {
         await apiService.updateUserStatus(user.id!, newStatus);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Usuário ${isActivating ? 'reativado' : 'inativado'} com sucesso!')),
+          SnackBar(
+              content: Text(
+                  'Usuário ${isActivating ? 'reativado' : 'inativado'} com sucesso!')),
         );
         _reloadData();
       } catch (e) {
@@ -347,414 +373,6 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
           SnackBar(content: Text('Erro ao atualizar status: $e')),
         );
       }
-    }
-  }
-
-  Future<void> _showLinkSupervisorDialog(Usuario technician) async {
-    // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "rlAB6phw0EBsBFeDyOt6";
-    final supervisors = _allUsers.where((user) => user.roles?[negocioId] == 'profissional').toList();
-    String? selectedSupervisorId = technician.supervisor_id;
-
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Vincular Supervisor para ${technician.email}'),
-              content: DropdownButtonFormField<String>(
-                value: selectedSupervisorId,
-                hint: const Text('Selecione um Enfermeiro'),
-                isExpanded: true,
-                items: supervisors.map((Usuario supervisor) {
-                  return DropdownMenuItem<String>(
-                    value: supervisor.id,
-                    child: Text(supervisor.email ?? 'Supervisor sem email'),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setDialogState(() {
-                    selectedSupervisorId = newValue;
-                  });
-                },
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                TextButton(
-                  child: const Text('Salvar'),
-                  onPressed: () async {
-                    if (technician.id == null || selectedSupervisorId == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Erro: Selecione um supervisor.')),
-                      );
-                      return;
-                    }
-
-                    final apiService = Provider.of<ApiService>(context, listen: false);
-                    try {
-                      await apiService.linkSupervisorToTechnician(technician.id!, selectedSupervisorId!);
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Supervisor vinculado com sucesso!')),
-                        );
-                        // Delay para dar tempo do backend processar
-                        await Future.delayed(const Duration(milliseconds: 500));
-                        _reloadData();
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erro ao vincular supervisor: $e')),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-  
-  Future<void> _showLinkTechniciansDialog(Usuario patient) async {
-    // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "rlAB6phw0EBsBFeDyOt6";
-    final technicians = _allUsers.where((user) => user.roles?[negocioId] == 'tecnico').toList();
-    final List<String> selectedTechnicianIds = List<String>.from(patient.tecnicosIds ?? []); 
-
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Vincular Técnicos para ${patient.email}'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: technicians.length,
-                  itemBuilder: (context, index) {
-                    final technician = technicians[index];
-                    return CheckboxListTile(
-                      title: Text(technician.email ?? 'Técnico sem email'),
-                      value: selectedTechnicianIds.contains(technician.id),
-                      onChanged: (bool? value) {
-                        setDialogState(() {
-                          if (value == true) {
-                            selectedTechnicianIds.add(technician.id!);
-                          } else {
-                            selectedTechnicianIds.remove(technician.id);
-                          }
-                        });
-                      },
-                    );
-                  },
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                TextButton(
-                  child: const Text('Salvar'),
-                  onPressed: () async {
-                    if (patient.id == null) return;
-                    
-                    final apiService = Provider.of<ApiService>(context, listen: false);
-                    try {
-                      print('🔗 TeamManagementPage: Vinculando técnicos ao paciente ${patient.nome}');
-                      print('   Paciente ID: ${patient.id}');
-                      print('   Técnicos selecionados: $selectedTechnicianIds');
-
-                      await apiService.linkTechniciansToPatient(patient.id!, selectedTechnicianIds);
-                      print('✅ TeamManagementPage: Vinculação concluída no backend');
-
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Técnicos vinculados com sucesso!')),
-                        );
-                        // Delay para dar tempo do backend processar
-                        print('⏳ TeamManagementPage: Aguardando 500ms...');
-                        await Future.delayed(const Duration(milliseconds: 500));
-                        print('🔄 TeamManagementPage: Chamando _reloadData...');
-                        _reloadData();
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erro ao vincular técnicos: $e')),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _showLinkNurseDialog(Usuario patient) async {
-    // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "rlAB6phw0EBsBFeDyOt6";
-    final nurses = _allUsers.where((user) => user.roles?[negocioId] == 'profissional' && user.profissional_id != null).toList();
-    
-    String? selectedNurseId = patient.enfermeiroId;
-
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Vincular Enfermeiro para ${patient.email}'),
-              content: DropdownButtonFormField<String>(
-                value: selectedNurseId,
-                hint: const Text('Selecione um Enfermeiro'),
-                isExpanded: true,
-                items: nurses.map((Usuario nurse) {
-                  return DropdownMenuItem<String>(
-                    value: nurse.profissional_id,
-                    child: Text(nurse.email ?? 'Enfermeiro sem email'),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setDialogState(() {
-                    selectedNurseId = newValue;
-                  });
-                },
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                TextButton(
-                  child: const Text('Salvar'),
-                  onPressed: () async {
-                    if (patient.id == null || selectedNurseId == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Erro: Selecione um enfermeiro.')),
-                      );
-                      return;
-                    }
-
-                    final apiService = Provider.of<ApiService>(context, listen: false);
-                    try {
-                      await apiService.linkPatientToNurse(patient.id!, selectedNurseId!);
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Enfermeiro vinculado com sucesso!')),
-                        );
-                        // Delay para dar tempo do backend processar
-                        await Future.delayed(const Duration(milliseconds: 500));
-                        _reloadData();
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erro ao vincular enfermeiro: $e')),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _showLinkDoctorDialog(Usuario patient) async {
-    // *** CORREÇÃO APLICADA AQUI ***
-    const negocioId = "rlAB6phw0EBsBFeDyOt6";
-    final doctors = _allUsers.where((user) => user.roles?[negocioId] == 'medico').toList();
-    
-    String? selectedDoctorId = patient.medicoId;
-
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Vincular Médico para ${patient.email}'),
-              content: DropdownButtonFormField<String>(
-                value: selectedDoctorId,
-                hint: const Text('Selecione um Médico'),
-                isExpanded: true,
-                items: doctors.map((Usuario doctor) {
-                  return DropdownMenuItem<String>(
-                    value: doctor.id,
-                    child: Text(doctor.email ?? 'Médico sem email'),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setDialogState(() {
-                    selectedDoctorId = newValue;
-                  });
-                },
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                TextButton(
-                  child: const Text('Salvar'),
-                  onPressed: () async {
-                    if (patient.id == null || selectedDoctorId == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Erro: Selecione um médico.')),
-                      );
-                      return;
-                    }
-
-                    final apiService = Provider.of<ApiService>(context, listen: false);
-                    try {
-                      await apiService.linkPatientToDoctor(patient.id!, selectedDoctorId!);
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Médico vinculado com sucesso!')),
-                        );
-                        // Delay para dar tempo do backend processar
-                        await Future.delayed(const Duration(milliseconds: 500));
-                        _reloadData();
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erro ao vincular médico: $e')),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-  
-  Future<bool> _showUnlinkConfirmationDialog({required String title, required String content}) async {
-    return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Confirmar')),
-        ],
-      ),
-    ) ?? false;
-  }
-
-  Future<void> _unlinkSupervisor(Usuario technician) async {
-    final confirmed = await _showUnlinkConfirmationDialog(
-      title: 'Desvincular Supervisor',
-      content: 'Tem certeza que deseja desvincular o supervisor deste técnico?',
-    );
-    if (!confirmed || technician.id == null) return;
-
-    final apiService = Provider.of<ApiService>(context, listen: false);
-    try {
-      await apiService.linkSupervisorToTechnician(technician.id!, null);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Supervisor desvinculado com sucesso!')));
-        // Delay para dar tempo do backend processar
-        await Future.delayed(const Duration(milliseconds: 500));
-        _reloadData();
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao desvincular: $e')));
-    }
-  }
-
-  Future<void> _unlinkNurse(Usuario patient) async {
-    final confirmed = await _showUnlinkConfirmationDialog(
-      title: 'Desvincular Enfermeiro',
-      content: 'Tem certeza que deseja desvincular o enfermeiro deste paciente?',
-    );
-    if (!confirmed || patient.id == null) return;
-
-    final apiService = Provider.of<ApiService>(context, listen: false);
-    try {
-      await apiService.linkPatientToNurse(patient.id!, null);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enfermeiro desvinculado com sucesso!')));
-        // Delay para dar tempo do backend processar
-        await Future.delayed(const Duration(milliseconds: 500));
-        _reloadData();
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao desvincular: $e')));
-    }
-  }
-
-  Future<void> _unlinkDoctor(Usuario patient) async {
-    final confirmed = await _showUnlinkConfirmationDialog(
-      title: 'Desvincular Médico',
-      content: 'Tem certeza que deseja desvincular o médico deste paciente?',
-    );
-    if (!confirmed || patient.id == null) return;
-
-    final apiService = Provider.of<ApiService>(context, listen: false);
-    try {
-      await apiService.linkPatientToDoctor(patient.id!, null);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Médico desvinculado com sucesso!')));
-        // Delay para dar tempo do backend processar
-        await Future.delayed(const Duration(milliseconds: 500));
-        _reloadData();
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao desvincular: $e')));
-    }
-  }
-
-  Future<void> _unlinkAllTechnicians(Usuario patient) async {
-    final confirmed = await _showUnlinkConfirmationDialog(
-      title: 'Desvincular Todos os Técnicos',
-      content: 'Tem certeza que deseja desvincular TODOS os técnicos deste paciente?',
-    );
-    if (!confirmed || patient.id == null) return;
-
-    final apiService = Provider.of<ApiService>(context, listen: false);
-    try {
-      await apiService.linkTechniciansToPatient(patient.id!, []); // Envia lista vazia
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Técnicos desvinculados com sucesso!')));
-        // Delay para dar tempo do backend processar
-        await Future.delayed(const Duration(milliseconds: 500));
-        // Delay para dar tempo do backend processar
-        await Future.delayed(const Duration(milliseconds: 500));
-        _reloadData();
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao desvincular: $e')));
     }
   }
 
@@ -766,14 +384,14 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.showOnlyPatientsWithoutNurse == true
-          ? 'Pacientes sem Enfermeiro'
-          : widget.showOnlyPatientsWithoutTechnician == true
-            ? 'Pacientes sem Técnico'
-          : widget.showOnlyPatientsWithoutDoctor == true
-            ? 'Pacientes sem Médico'
-          : widget.showOnlyTechniciansWithoutSupervisor == true
-            ? 'Técnicos sem Supervisor'
-            : 'Gestão de Equipe'),
+            ? 'Pacientes sem Enfermeiro'
+            : widget.showOnlyPatientsWithoutTechnician == true
+                ? 'Pacientes sem Técnico'
+                : widget.showOnlyPatientsWithoutDoctor == true
+                    ? 'Pacientes sem Médico'
+                    : widget.showOnlyTechniciansWithoutSupervisor == true
+                        ? 'Técnicos sem Supervisor'
+                        : 'Gestão de Equipe'),
         actions: [
           PermissionGuard(
             permission: 'settings.manage_permissions',
@@ -783,7 +401,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const RolesManagementPage(negocioId: negocioId),
+                    builder: (context) =>
+                        const RolesManagementPage(negocioId: negocioId),
                   ),
                 );
               },
@@ -817,7 +436,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Filtrar por Papel:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Filtrar por Papel:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -841,7 +461,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('Filtrar por Status:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Filtrar por Status:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8.0,
@@ -875,17 +496,24 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return Center(child: Text('Erro ao carregar usuários: ${snapshot.error}'));
+                  return Center(
+                      child:
+                          Text('Erro ao carregar usuários: ${snapshot.error}'));
                 }
                 if (_filteredUsers.isEmpty) {
-                  return const Center(child: Text('Nenhum usuário encontrado para os filtros aplicados.'));
+                  return const Center(
+                      child: Text(
+                          'Nenhum usuário encontrado para os filtros aplicados.'));
                 }
 
                 return GridView.builder(
                   padding: const EdgeInsets.all(16.0),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: MediaQuery.of(context).size.width > 1200 ? 4 : 
-                                   MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                    crossAxisCount: MediaQuery.of(context).size.width > 1200
+                        ? 4
+                        : MediaQuery.of(context).size.width > 600
+                            ? 3
+                            : 2,
                     childAspectRatio: 0.75,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
@@ -894,7 +522,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                   itemBuilder: (context, index) {
                     final user = _filteredUsers[index];
                     final userRole = user.roles?[negocioId] ?? 'sem-papel';
-                    final isInactive = user.status_por_negocio?[negocioId] == 'inativo';
+                    final isInactive =
+                        user.status_por_negocio?[negocioId] == 'inativo';
                     return _buildUserCard(user, userRole, isInactive);
                   },
                 );
@@ -905,7 +534,6 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
       ),
     );
   }
-
 
   LinearGradient _getRoleGradient(String role) {
     // Tratamento especial para roles do sistema
@@ -1031,10 +659,194 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
     }
   }
 
+  IconData _getIconFromString(String? iconName) {
+    switch (iconName) {
+      case 'person':
+        return Icons.person;
+      case 'medical_services':
+        return Icons.medical_services;
+      case 'health_and_safety':
+        return Icons.health_and_safety;
+      case 'psychology':
+        return Icons.psychology;
+      case 'fitness_center':
+        return Icons.fitness_center;
+      case 'spa':
+        return Icons.spa;
+      case 'local_hospital':
+        return Icons.local_hospital;
+      case 'healing':
+        return Icons.healing;
+      case 'favorite':
+        return Icons.favorite;
+      case 'monitor_heart':
+        return Icons.monitor_heart;
+      case 'science':
+        return Icons.science;
+      case 'biotech':
+        return Icons.biotech;
+      case 'support_agent':
+        return Icons.support_agent;
+      case 'supervisor_account':
+        return Icons.supervisor_account;
+      case 'group':
+        return Icons.group;
+      case 'work':
+        return Icons.work;
+      case 'school':
+        return Icons.school;
+      case 'sports_esports':
+        return Icons.sports_esports;
+      case 'restaurant':
+        return Icons.restaurant;
+      case 'local_cafe':
+        return Icons.local_cafe;
+      default:
+        return Icons.person;
+    }
+  }
+
+  Color _getColorFromHex(String? hexColor) {
+    if (hexColor == null || hexColor.isEmpty) {
+      return Colors.grey;
+    }
+    try {
+      return Color(int.parse(hexColor.replaceFirst('#', '0xFF')));
+    } catch (e) {
+      return Colors.grey;
+    }
+  }
+
+  Future<void> _showDynamicAssociationDialog(
+      Usuario patient, Role profile) async {
+    const negocioId = "rlAB6phw0EBsBFeDyOt6";
+
+    // Busca profissionais com esse perfil
+    final professionals =
+        _allUsers.where((u) => u.roles?[negocioId] == profile.tipo).toList();
+
+    // IDs já associados
+    // IDs já associados
+    List<String> associatedIds =
+        patient.getAssociatedProfessionals(profile.id!);
+
+    // Fallback para campos legados se não houver associação dinâmica
+    if (associatedIds.isEmpty) {
+      if (profile.tipo == 'enfermeiro' && patient.enfermeiroId != null) {
+        associatedIds = [patient.enfermeiroId!];
+      } else if (profile.tipo == 'medico' && patient.medicoId != null) {
+        associatedIds = [patient.medicoId!];
+      } else if (profile.tipo == 'tecnico' && patient.tecnicosIds != null) {
+        associatedIds = List.from(patient.tecnicosIds!);
+      }
+    }
+
+    final List<String> selectedIds = List.from(associatedIds);
+
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Icon(_getIconFromString(profile.icone),
+                      color: _getColorFromHex(profile.cor)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Vincular ${profile.nomeCustomizado}')),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: professionals.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                            'Nenhum profissional encontrado com este perfil.'),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: professionals.length,
+                        itemBuilder: (context, index) {
+                          final professional = professionals[index];
+                          final isSelected =
+                              selectedIds.contains(professional.id);
+
+                          return CheckboxListTile(
+                            title: Text(
+                                DisplayUtils.getUserDisplayName(professional)),
+                            subtitle: Text(professional.email ?? ''),
+                            value: isSelected,
+                            secondary: ProfileAvatar(
+                              imageUrl: professional.profileImage,
+                              userName: professional.nome,
+                              radius: 16,
+                            ),
+                            onChanged: (bool? value) {
+                              setDialogState(() {
+                                if (value == true) {
+                                  selectedIds.add(professional.id!);
+                                } else {
+                                  selectedIds.remove(professional.id);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancelar'),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                if (professionals.isNotEmpty)
+                  TextButton(
+                    child: const Text('Salvar'),
+                    onPressed: () async {
+                      if (patient.id == null) return;
+
+                      final apiService =
+                          Provider.of<ApiService>(context, listen: false);
+                      try {
+                        await apiService.managePatientAssociation(
+                            patient.id!, profile.id!, selectedIds);
+
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text(
+                                    '${profile.nomeCustomizado} atualizado com sucesso!')),
+                          );
+                          // Delay para dar tempo do backend processar
+                          await Future.delayed(
+                              const Duration(milliseconds: 500));
+                          _reloadData();
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Erro ao atualizar: $e')),
+                          );
+                        }
+                      }
+                    },
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildUserCard(Usuario user, String userRole, bool isInactive) {
     final displayName = DisplayUtils.getUserDisplayName(user);
     final initials = _getUserInitials(user);
-    
+
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1050,9 +862,10 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                gradient: isInactive ? 
-                  LinearGradient(colors: [Colors.grey[400]!, Colors.grey[500]!]) :
-                  _getRoleGradient(userRole),
+                gradient: isInactive
+                    ? LinearGradient(
+                        colors: [Colors.grey[400]!, Colors.grey[500]!])
+                    : _getRoleGradient(userRole),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(12),
                   topRight: Radius.circular(12),
@@ -1074,29 +887,16 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                     ),
                   ),
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, color: Colors.white, size: 20),
+                    icon: const Icon(Icons.more_vert,
+                        color: Colors.white, size: 20),
                     onSelected: (value) {
                       if (value == 'change_role') {
                         _showChangeRoleDialog(user);
-                      } else if (value == 'link_supervisor') {
-                        _showLinkSupervisorDialog(user);
-                      } else if (value == 'link_technicians') {
-                        _showLinkTechniciansDialog(user);
-                      } else if (value == 'link_nurse') {
-                        _showLinkNurseDialog(user);
-                      } else if (value == 'link_doctor') {
-                        _showLinkDoctorDialog(user);
-                      } 
-                      else if (value == 'unlink_supervisor') {
-                        _unlinkSupervisor(user);
-                      } else if (value == 'unlink_nurse') {
-                        _unlinkNurse(user);
-                      } else if (value == 'unlink_doctor') {
-                        _unlinkDoctor(user);
-                      } else if (value == 'unlink_all_technicians') {
-                        _unlinkAllTechnicians(user);
-                      } else if (value == 'inativar') {
-                        _showUpdateStatusDialog(user, 'inativo');
+                      } else if (value.startsWith('manage_')) {
+                        final profileId = value.replaceFirst('manage_', '');
+                        final profile = _availableRoles
+                            .firstWhere((r) => r.id == profileId);
+                        _showDynamicAssociationDialog(user, profile);
                       } else if (value == 'reativar') {
                         _showUpdateStatusDialog(user, 'ativo');
                       }
@@ -1116,83 +916,54 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                         ));
                         items.add(const PopupMenuItem<String>(
                           value: 'inativar',
-                          child: Text('Inativar Usuário', style: TextStyle(color: Colors.red)),
+                          child: Text('Inativar Usuário',
+                              style: TextStyle(color: Colors.red)),
                         ));
                         items.add(const PopupMenuDivider());
 
-                        if (userRole == 'tecnico') {
-                          items.add(
-                            const PopupMenuItem<String>(
-                              value: 'link_supervisor',
-                              child: Text('Vincular Supervisor'),
-                            ),
-                          );
-                          if (user.supervisor_id != null && user.supervisor_id!.isNotEmpty) {
-                            items.add(
-                              const PopupMenuItem<String>(
-                                value: 'unlink_supervisor',
-                                child: Text('Desvincular Supervisor', style: TextStyle(color: Colors.red)),
-                              ),
-                            );
-                          }
-                        }
                         if (userRole == 'cliente') {
-                          items.add(
-                            const PopupMenuItem<String>(
-                              value: 'link_technicians',
-                              child: Text('Vincular Técnicos'),
-                            ),
-                          );
-                          items.add(
-                            const PopupMenuItem<String>(
-                              value: 'link_nurse',
-                              child: Text('Vincular Enfermeiro'),
-                            ),
-                          );
-                          items.add(
-                            const PopupMenuItem<String>(
-                              value: 'link_doctor',
-                              child: Text('Vincular Médico'),
-                            ),
-                          );
-                          if ((user.enfermeiroId != null && user.enfermeiroId!.isNotEmpty) || 
-                              (user.medicoId != null && user.medicoId!.isNotEmpty) ||
-                              (user.tecnicosIds != null && user.tecnicosIds!.isNotEmpty)) {
-                            items.add(const PopupMenuDivider());
-                          }
-                          if (user.enfermeiroId != null && user.enfermeiroId!.isNotEmpty) {
-                            items.add(
-                              const PopupMenuItem<String>(
-                                value: 'unlink_nurse',
-                                child: Text('Desvincular Enfermeiro', style: TextStyle(color: Colors.red)),
-                              ),
-                            );
-                          }
-                          if (user.medicoId != null && user.medicoId!.isNotEmpty) {
-                            items.add(
-                              const PopupMenuItem<String>(
-                                value: 'unlink_doctor',
-                                child: Text('Desvincular Médico', style: TextStyle(color: Colors.red)),
-                              ),
-                            );
-                          }
-                          if (user.tecnicosIds != null && user.tecnicosIds!.isNotEmpty) {
-                            items.add(
-                              const PopupMenuItem<String>(
-                                value: 'unlink_all_technicians',
-                                child: Text('Desvincular Todos os Técnicos', style: TextStyle(color: Colors.red)),
-                              ),
-                            );
+                          // Associações Dinâmicas (Inclui roles de sistema como Médico, Enfermeiro, Técnico)
+                          final customProfiles = _availableRoles.toList();
+
+                          if (customProfiles.isNotEmpty) {
+                            // items.add(const PopupMenuDivider()); // REMOVIDO: Já existe um divider acima
+                            items.add(const PopupMenuItem(
+                              enabled: false,
+                              child: Text('Gerenciar Vínculos',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12)),
+                            ));
+
+                            for (final profile in customProfiles) {
+                              items.add(
+                                PopupMenuItem(
+                                  value: 'manage_${profile.id}',
+                                  child: Row(
+                                    children: [
+                                      Icon(_getIconFromString(profile.icone),
+                                          size: 18,
+                                          color: _getColorFromHex(profile.cor)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                          child: Text(
+                                              'Vincular ${profile.nomeCustomizado}')),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }
                           }
                         }
                       }
+
                       return items;
                     },
                   ),
                 ],
               ),
             ),
-            
+
             // Conteúdo do card
             Expanded(
               child: Padding(
@@ -1206,7 +977,9 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                         Icon(
                           _getRoleIcon(userRole),
                           size: 18,
-                          color: isInactive ? Colors.grey[600] : _getRoleGradient(userRole).colors[1],
+                          color: isInactive
+                              ? Colors.grey[600]
+                              : _getRoleGradient(userRole).colors[1],
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -1215,13 +988,15 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: isInactive ? Colors.grey[600] : Colors.grey[800],
+                              color: isInactive
+                                  ? Colors.grey[600]
+                                  : Colors.grey[800],
                             ),
                           ),
                         ),
                       ],
                     ),
-                    
+
                     // Status inativo em linha separada
                     if (isInactive) ...[
                       const SizedBox(height: 4),
@@ -1229,7 +1004,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                         children: [
                           const SizedBox(width: 26), // Alinha com o texto acima
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.red[100],
                               borderRadius: BorderRadius.circular(6),
@@ -1246,7 +1022,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                         ],
                       ),
                     ],
-                    
+
                     // Informações de vínculos
                     if (userRole == 'cliente' && !isInactive) ...[
                       const SizedBox(height: 8),
@@ -1259,7 +1035,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                     ] else ...[
                       const SizedBox(height: 12),
                     ],
-                    
+
                     // Avatar centralizado na parte inferior
                     Expanded(
                       child: Center(
@@ -1288,13 +1064,15 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
         orElse: () => const Usuario(firebaseUid: '', id: null, email: null),
       );
       if (nurse.email != null) {
-        nurseName = DisplayUtils.getUserDisplayName(nurse, fallback: 'Enfermeiro');
+        nurseName =
+            DisplayUtils.getUserDisplayName(nurse, fallback: 'Enfermeiro');
       }
     }
 
     return Row(
       children: [
-        Icon(Icons.health_and_safety_outlined, size: 16, color: Colors.green[700]),
+        Icon(Icons.health_and_safety_outlined,
+            size: 16, color: Colors.green[700]),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -1320,13 +1098,15 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
         orElse: () => const Usuario(firebaseUid: '', id: null, email: null),
       );
       if (doctor.email != null) {
-        doctorName = DisplayUtils.getUserDisplayName(doctor, fallback: 'Médico');
+        doctorName =
+            DisplayUtils.getUserDisplayName(doctor, fallback: 'Médico');
       }
     }
 
     return Row(
       children: [
-        Icon(Icons.medical_information_outlined, size: 16, color: Colors.purple[700]),
+        Icon(Icons.medical_information_outlined,
+            size: 16, color: Colors.purple[700]),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -1354,11 +1134,12 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
       final technicianNames = technicianIds.map((id) {
         final tech = _allUsers.firstWhere(
           (u) => u.id == id,
-          orElse: () => const Usuario(firebaseUid: '', id: null, email: 'Desconhecido'),
+          orElse: () =>
+              const Usuario(firebaseUid: '', id: null, email: 'Desconhecido'),
         );
         return DisplayUtils.getUserDisplayName(tech, fallback: 'Técnico');
       }).toList();
-      
+
       if (technicianNames.length == 1) {
         techniciansText = 'Téc: ${technicianNames.first}';
       } else {
@@ -1369,7 +1150,8 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
 
     return Row(
       children: [
-        Icon(Icons.medical_services_outlined, size: 16, color: Colors.orange[700]),
+        Icon(Icons.medical_services_outlined,
+            size: 16, color: Colors.orange[700]),
         const SizedBox(width: 8),
         Expanded(
           child: Text(

@@ -72,6 +72,7 @@ class UsuarioProfile(UsuarioBase):
     consentimento_lgpd: Optional[bool] = None
     data_consentimento_lgpd: Optional[datetime] = None
     tipo_consentimento: Optional[str] = None
+    associations: Optional[Dict[str, List[str]]] = Field(None, description="Mapa de associações dinâmicas (role_id -> lista de user_ids).")
 
 # Em UsuarioSync, remova 'endereco'
 class UsuarioSync(BaseModel):
@@ -1108,3 +1109,22 @@ class CustomTerminology(BaseModel):
     guideline: str = Field(default="Orientação", max_length=50)
     diary: str = Field(default="Diário", max_length=50)
     medical_report: str = Field(default="Relatório Médico", max_length=50)
+
+
+# =================================================================================
+# SCHEMAS DE ASSOCIAÇÕES DINÂMICAS DE PERFIS
+# =================================================================================
+
+class AssociationUpdate(BaseModel):
+    """Schema para atualização de associações de profissionais a pacientes"""
+    professional_ids: List[str] = Field(
+        default_factory=list,
+        description="Lista de IDs de usuários a associar. Lista vazia desassocia todos."
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "professional_ids": ["user_123", "user_456"]
+            }
+        }

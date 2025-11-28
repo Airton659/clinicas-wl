@@ -8250,3 +8250,76 @@ def marcar_tarefa_como_concluida_v2(
     updated_doc['id'] = tarefa_id
 
     return updated_doc
+
+
+# =================================================================================
+# ASSOCIAÇÕES DINÂMICAS DE PERFIS
+# =================================================================================
+
+def manage_patient_associations(
+    db: firestore.Client,
+    negocio_id: str,
+    patient_id: str,
+    role_type: str,
+    professional_ids: List[str]
+) -> dict:
+    """
+    Gerencia associações de profissionais a um paciente.
+
+    Args:
+        db: Cliente Firestore (síncrono)
+        negocio_id: ID do negócio
+        patient_id: ID do paciente
+        role_type: ID do perfil customizado
+        professional_ids: Lista de IDs de usuários (vazio = desassocia todos)
+
+    Returns:
+        Dict com informações sobre a associação atualizada
+    """
+    try:
+        # CORREÇÃO: Pacientes ficam na coleção raiz 'usuarios', não dentro de 'negocios'
+        patient_ref = db.collection('usuarios').document(patient_id)
+
+        # Buscar o perfil para saber o tipo e garantir compatibilidade
+        role_doc = db.collection('negocios').document(negocio_id)\
+                       .collection('roles').document(role_type).get()
+        
+        update_data = {
+            f'associations.{role_type}': professional_ids
+        }
+
+        if role_doc.exists:
+            role_data = role_doc.to_dict()
+            tipo = role_data.get('tipo')
+            
+            # Sincronização com campos legados
+            if tipo == 'enfermeiro':
+                update_data['enfermeiro_vinculado_id'] = professional_ids[0] if professional_ids else None
+            elif tipo == 'medico':
+                update_data['medico_vinculado_id'] = professional_ids[0] if professional_ids else None
+                # Atualiza também o campo antigo para garantir compatibilidade total
+                update_data['medico_id'] = professional_ids[0] if professional_ids else None
+            elif tipo == 'tecnico':
+                update_data['tecnicos_vinculados_ids'] = professional_ids
+
+        # Atualiza campo associations.{role_type} e campos legados
+        patient_ref.update(update_data)
+
+        logger.info(
+            f"✅ Associações atualizadas para paciente {patient_id}: "
+            f"{role_type} -> {len(professional_ids)} profissionais"
+        )
+
+        return {
+            "patient_id": patient_id,
+            "role_type": role_type,
+            "associated_count": len(professional_ids)
+        }
+
+    except Exception as e:
+        logger.error(
+            f"❌ Erro ao gerenciar associações do paciente {patient_id}: {e}",
+            exc_info=True
+        )
+        raise
+

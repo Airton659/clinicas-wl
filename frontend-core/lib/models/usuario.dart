@@ -22,6 +22,7 @@ class Usuario {
     this.dataConsentimentoLgpd,
     this.tipoConsentimento,
     this.profileImage,
+    this.associations,
   });
 
   final String? id;
@@ -41,9 +42,23 @@ class Usuario {
   final DateTime? dataConsentimentoLgpd;
   final String? tipoConsentimento;
   final String? profileImage;
+  final Map<String, List<String>>? associations;
 
   // Helper para detectar super_admin
   bool get isSuperAdmin => roles?['platform'] == 'super_admin';
+
+  // Helpers para associações dinâmicas
+  List<String> getAssociatedProfessionals(String profileId) {
+    return associations?[profileId] ?? [];
+  }
+
+  bool hasAssociation(String profileId, String userId) {
+    return associations?[profileId]?.contains(userId) ?? false;
+  }
+
+  int getAssociationCount(String profileId) {
+    return associations?[profileId]?.length ?? 0;
+  }
 
   // CONSTRUTOR ADICIONAL PARA CASOS DE FALHA
   const Usuario.empty()
@@ -63,7 +78,19 @@ class Usuario {
         consentimentoLgpd = null,
         dataConsentimentoLgpd = null,
         tipoConsentimento = null,
-        profileImage = null;
+        profileImage = null,
+        associations = null;
+
+  static Map<String, List<String>>? _parseAssociations(dynamic data) {
+    if (data == null) return null;
+
+    final Map<String, List<String>> result = {};
+    (data as Map<String, dynamic>).forEach((key, value) {
+      result[key] = value != null ? List<String>.from(value) : [];
+    });
+
+    return result;
+  }
 
   factory Usuario.fromJson(Map<String, dynamic> json) {
     final firebaseUid = json['firebase_uid'] as String? ?? json['id'] as String? ?? '';
@@ -93,6 +120,7 @@ class Usuario {
           : null,
       tipoConsentimento: json['tipo_consentimento'] as String?,
       profileImage: json['profile_image_url'] as String? ?? json['profile_image'] as String?,
+      associations: _parseAssociations(json['associations']),
     );
   }
 }
